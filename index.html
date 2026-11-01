@@ -157,10 +157,11 @@
       <select id="camSel" class="hide"></select>
       <button id="btnCorners" disabled>Re-mark corners</button>
       <button id="btnReread" class="hide">Re-read photo</button>
+      <button id="btnTurn" class="hide">↻ Turn labels</button>
     </div>
     <ol class="steps">
       <li id="st1" class="now">Put the phone/webcam <b>directly above</b> the board, with the whole board in view.</li>
-      <li id="st2">Tap the 4 corners of the <b>squares area</b> (where the 64 squares end, <b>not</b> the wooden frame or border) in order: <b>a1 → h1 → h8 → a8</b> (a1 = White’s bottom-left). A magnifier helps you place each dot; drag a dot later to adjust.</li>
+      <li id="st2">Tap the 4 corners of the <b>squares area</b> (where the 64 squares end, <b>not</b> the wooden frame or border), <b>in any order</b>. The app finds a1 by itself from the pieces. A magnifier helps you place each dot; drag a dot later to adjust.</li>
       <li id="st3">Set up the starting position, choose your colour and level, then press <b>Start game</b>. The engine plays only on the screen, so you move just your own pieces. You can leave the engine’s pieces off your board.</li>
     </ol>
     <div id="rectWrap">
@@ -475,7 +476,8 @@ function updateButtons(){
   $('btnUndo').disabled=!(hist.length&&(state==='human'||state==='remove'||state==='over'));
   $('btnSync').disabled=!(H&&lastFeat&&state!=='idle');
   $('btnStart').classList.toggle('hide',state!=='idle');
-  $('btnReread').classList.toggle('hide',!(mode==='photo'&&H&&state!=='idle'));}
+  $('btnReread').classList.toggle('hide',!(mode==='photo'&&H&&state!=='idle'));
+  $('btnTurn').classList.toggle('hide',!(H&&corners.length===4));}
 
 // ================= game flow =================
 function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});saveGame();return s;}
@@ -506,7 +508,7 @@ function startGame(){
   humanColor=+$('selColor').value;rebuild();
   clearBig();
   if(SF.ready)SF.w.postMessage('ucinewgame');
-  if(H&&lastFeat){ref=lastFeat.slice();needResync=false;}else{ref=null;}
+  if(H&&sourceReady()){autoOrient();const data=grab();lastFeat=extract(data);ref=lastFeat.slice();refShot=snapFrame();setRefGeom(data);needResync=false;}else if(H&&lastFeat){ref=lastFeat.slice();needResync=false;}else{ref=null;}
   setStep(4);
   setTimeout(()=>window.scrollTo({top:0}),30);
   if(humanColor===-1)engineTurn();
@@ -675,6 +677,86 @@ function rebuild(){
   for(let v=0;v<RW;v++)for(let u=0;u<RW;u++){let X=(u+0.5)/RW*8,Y=8-(v+0.5)/RW*8;if(humanColor===-1){X=8-X;Y=8-Y;}
     const [x,y]=applyH(X,Y);rectIdx[v*RW+u]=px(x,y);}
   if(mode==='photo')photoDirty=true;}
+// ---- corners can be tapped in any order: sort them round the board, check the shape, then find White's side ----
+function orderCorners(pts){
+  const cx=pts.reduce((a,p)=>a+p[0],0)/4,cy=pts.reduce((a,p)=>a+p[1],0)/4,ar=(srcW()/srcH())||1;
+  const q=pts.slice().sort((a,b)=>Math.atan2(b[1]-cy,(b[0]-cx)*ar)-Math.atan2(a[1]-cy,(a[0]-cx)*ar)); // descending angle: BL,BR,TR,TL
+  let k=0,best=-9;q.forEach((p,i)=>{const sc=p[1]-p[0];if(sc>best){best=sc;k=i;}}); // start at the bottom-left one
+  return q.slice(k).concat(q.slice(0,k));}
+function cornerProblem(c){
+  const ar=(srcW()/srcH())||1,P=c.map(p=>[p[0]*ar,p[1]]);let sign=0;
+  for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4],d=P[(i+2)%4],cr=(b[0]-a[0])*(d[1]-b[1])-(b[1]-a[1])*(d[0]-b[0]);
+    if(Math.abs(cr)<1e-6)return 'Three corners are in a line.';const sg=Math.sign(cr);if(sign&&sg!==sign)return 'Those 4 points don’t make a board shape.';sign=sg;}
+  let area=0;for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4];area+=a[0]*b[1]-b[0]*a[1];}area=Math.abs(area)/2;
+  if(area<0.04*ar)return 'That area is too small. Tap the 4 corners of the whole board.';
+  for(let i=0;i<4;i++)for(let j=i+1;j<4;j++)if(Math.hypot(P[i][0]-P[j][0],P[i][1]-P[j][1])<0.06)return 'Two corners are too close together.';
+  return null;}
+// look at the pieces: White's (light) pieces mark White's side, so a1 can be found automatically.
+// Returns true if the corners were turned.
+function autoOrient(){
+  if(corners.length!==4||!H||!sourceReady())return false;
+  const data=grab(),Ls=[];
+  for(let r=0;r<8;r++)for(let f=0;f<8;f++){let t=0,n=0;
+    for(let i=0;i<5;i++)for(let j=0;j<5;j++){const [x,y]=applyH(f+0.3+0.1*i,r+0.3+0.1*j);const xi=Math.min(procW-1,Math.max(0,Math.round(x*procW))),yi=Math.min(procH-1,Math.max(0,Math.round(y*procH)));const o=(yi*procW+xi)*4;t+=data[o]*0.3+data[o+1]*0.59+data[o+2]*0.11;n++;}
+    Ls[r*8+f]=t/n;}
+  const band=fn=>{let t=0,n=0;for(let s=0;s<64;s++)if(fn(s&7,s>>3)){t+=Ls[s];n++;}return t/n;};
+  const bottom=band((f,r)=>r<2),top=band((f,r)=>r>5),left=band((f,r)=>f<2),right=band((f,r)=>f>5);
+  const dv=Math.abs(bottom-top),dh=Math.abs(left-right);let k=0;
+  if(Math.max(dv,dh)>8){if(dv>=dh)k=bottom>=top?0:2;else k=right>left?1:3;}
+  else{ // no pieces set up yet: use the square colours (a1 is a dark square)
+    const ev=band((f,r)=>r>1&&r<6&&(f+r)%2===0),od=band((f,r)=>r>1&&r<6&&(f+r)%2===1);if(ev>od+6)k=1;}
+  orientInfo={dv,dh,k};
+  if(!k)return false;
+  corners=corners.slice(k).concat(corners.slice(0,k));rebuild();saveCorners();return true;}
+let orientInfo=null;
+// ---- follow small camera movements: track the 4 corners from the reference picture ----
+let refGray=null,refCorners=null,refPts=null,trackMsg='';
+// points on the board's border (just outside the squares) plus the 4 corners, in board coordinates
+const TRACK_BP=[[0,0],[8,0],[8,8],[0,8]];for(const t of [1,2,3,4,5,6,7])TRACK_BP.push([t,-0.3],[8.3,t],[t,8.3],[-0.3,t]);
+function toGray(data){const g=new Uint8Array(procW*procH);for(let i=0,j=0;i<g.length;i++,j+=4)g[i]=(data[j]*77+data[j+1]*150+data[j+2]*29)>>8;return g;}
+function setRefGeom(data){if(!H||!procW)return;refGray=toGray(data||grab());refCorners=corners.map(c=>c.slice());refPts=TRACK_BP.map(([X,Y])=>{const [x,y]=applyH(X,Y);return [x*procW,y*procH];});}
+// least-squares homography (8 params) mapping src[i] -> dst[i], points in pixels
+function fitHom(src,dst){const n=src.length,M=Array.from({length:8},()=>new Float64Array(8)),v=new Float64Array(8),sc=procW;
+  for(let i=0;i<n;i++){const X=src[i][0]/sc,Y=src[i][1]/sc,x=dst[i][0]/sc,y=dst[i][1]/sc;
+    for(const [row,rhs] of [[[X,Y,1,0,0,0,-X*x,-Y*x],x],[[0,0,0,X,Y,1,-X*y,-Y*y],y]]){for(let r=0;r<8;r++){v[r]+=row[r]*rhs;for(let c=0;c<8;c++)M[r][c]+=row[r]*row[c];}}}
+  for(let c=0;c<8;c++){let pv=c;for(let r=c+1;r<8;r++)if(Math.abs(M[r][c])>Math.abs(M[pv][c]))pv=r;[M[c],M[pv]]=[M[pv],M[c]];[v[c],v[pv]]=[v[pv],v[c]];if(Math.abs(M[c][c])<1e-12)return null;
+    for(let r=0;r<8;r++){if(r===c)continue;const f=M[r][c]/M[c][c];if(!f)continue;for(let k=c;k<8;k++)M[r][k]-=f*M[c][k];v[r]-=f*v[c];}}
+  const h=Array.from(v,(x,i)=>x/M[i][i]);
+  return (px,py)=>{const X=px/sc,Y=py/sc,w=h[6]*X+h[7]*Y+1;return [(h[0]*X+h[1]*Y+h[2])/w*sc,(h[3]*X+h[4]*Y+h[5])/w*sc];};}
+function trackCorners(data,R){
+  if(!refGray||!refPts||refGray.length!==procW*procH)return 0;
+  const cur=toGray(data),P=9;R=R||16;const src=[],dst=[];
+  for(let i=0;i<TRACK_BP.length;i++){
+    const rx=Math.round(refPts[i][0]),ry=Math.round(refPts[i][1]);
+    if(rx<P||ry<P||rx>=procW-P||ry>=procH-P)continue;
+    const [exn,eyn]=applyH(TRACK_BP[i][0],TRACK_BP[i][1]),ex=Math.round(exn*procW),ey=Math.round(eyn*procH);
+    let mt=0,n=0;for(let y=-P;y<=P;y+=2)for(let x=-P;x<=P;x+=2){mt+=refGray[(ry+y)*procW+rx+x];n++;}mt/=n;
+    let vt=0;for(let y=-P;y<=P;y+=2)for(let x=-P;x<=P;x+=2){const d=refGray[(ry+y)*procW+rx+x]-mt;vt+=d*d;}
+    if(vt<n*30)continue; // flat patch: nothing to lock on to
+    const score=(cx,cy)=>{if(cx<P||cy<P||cx>=procW-P||cy>=procH-P)return -2;
+      let mc=0;for(let y=-P;y<=P;y+=2)for(let x=-P;x<=P;x+=2)mc+=cur[(cy+y)*procW+cx+x];mc/=n;
+      let sxy=0,syy=0;for(let y=-P;y<=P;y+=2)for(let x=-P;x<=P;x+=2){const a=refGray[(ry+y)*procW+rx+x]-mt,b=cur[(cy+y)*procW+cx+x]-mc;sxy+=a*b;syy+=b*b;}
+      return sxy/Math.sqrt(vt*syy+1);};
+    let best=-2,bx=ex,by=ey;const st=R>20?3:2;
+    for(let dy=-R;dy<=R;dy+=st)for(let dx=-R;dx<=R;dx+=st){const v=score(ex+dx,ey+dy);if(v>best){best=v;bx=ex+dx;by=ey+dy;}}
+    const x0=bx,y0=by;for(let dy=-st;dy<=st;dy++)for(let dx=-st;dx<=st;dx++){const v=score(x0+dx,y0+dy);if(v>best){best=v;bx=x0+dx;by=y0+dy;}}
+    // sub-pixel refinement (parabola through neighbours)
+    const sx=(score(bx-1,by)-score(bx+1,by))/(2*(score(bx-1,by)-2*best+score(bx+1,by))||1),sy=(score(bx,by-1)-score(bx,by+1))/(2*(score(bx,by-1)-2*best+score(bx,by+1))||1);
+    if(best>0.7){src.push([rx,ry]);dst.push([bx+(Math.abs(sx)<1?sx:0),by+(Math.abs(sy)<1?sy:0)]);}}
+  if(src.length<4)return -1;
+  // fit, drop the worst outliers (a piece covering a point), fit again
+  let S=src,D=dst,f=null;
+  for(let it=0;it<3;it++){f=fitHom(S,D);if(!f)return -1;const res=S.map((p,i)=>{const q=f(p[0],p[1]);return Math.hypot(q[0]-D[i][0],q[1]-D[i][1]);});
+    const keep=res.map((r,i)=>r<1.5||r<=[...res].sort((a,b)=>a-b)[Math.floor(res.length*0.6)]?i:-1).filter(i=>i>=0);
+    if(keep.length===S.length||keep.length<5)break;S=keep.map(i=>S[i]);D=keep.map(i=>D[i]);}
+  f=fitHom(S,D);if(!f)return -1;
+  const nc=refCorners.map(c=>{const q=f(c[0]*procW,c[1]*procH);return [q[0]/procW,q[1]/procH];});
+  const shift=Math.max(...nc.map((c,i)=>Math.hypot((c[0]-corners[i][0])*procW,(c[1]-corners[i][1])*procH)));
+  const total=Math.max(...nc.map((c,i)=>Math.hypot((c[0]-refCorners[i][0])*procW,(c[1]-refCorners[i][1])*procH)));
+  if(cornerProblem(nc))return -1;
+  if(shift>=0.4){corners=nc;rebuild();saveCorners();}
+  trackMsg=total>3?`camera moved ${total.toFixed(0)}px, following`:'';
+  return total;}
 function saveCorners(){try{localStorage.setItem('ccc_corners_'+mode,JSON.stringify(corners));}catch(e){}}
 function loadCorners(){try{const c=JSON.parse(localStorage.getItem('ccc_corners_'+mode)||'[]');if(Array.isArray(c)&&c.length===4)corners=c;}catch(e){}}
 
@@ -700,7 +782,7 @@ function sqDiff(a,b){const d=new Float32Array(64);
     d[s]=t/K+0.3*(Math.abs(a0-b0)+Math.abs(a1-b1)+Math.abs(a2-b2))/3;}
   return d;}
 function adjDiff(a,b){const d=sqDiff(a,b);const med=Array.from(d).sort((x,y)=>x-y)[32];for(let s=0;s<64;s++)d[s]=Math.max(0,d[s]-med);return d;}
-function captureRef(){stableKey='';stableDone='';if(lastFeat&&H){ref=lastFeat.slice();refShot=snapFrame();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
+function captureRef(){stableKey='';stableDone='';if(lastFeat&&H){ref=lastFeat.slice();refShot=snapFrame();setRefGeom();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
 function thr(){return +$('sens').value;}
 function changeSet(m,mover){const S=[m.f,m.t];
   if(m.fl&F_EP)S.push(m.t-8*mover);
@@ -757,7 +839,7 @@ function showCamState(){
   else if(camActivity==='settling'){t='⏳ Waiting for the picture to settle…';c='';}
   else{const d=adjDiff(lastFeat,ref),T=thr(),n=Array.from(d).filter(v=>v>T).length;
     t=n?`🔍 ${n} square${n>1?'s':''} changed: reading…`:'👁 Watching the board: no change yet';c=n?'good':'';}
-  el.textContent=t+`  ·  noise ${noiseLvl.toFixed(0)}`;el.className=c;
+  el.textContent=t+(trackMsg?`  ·  📷 ${trackMsg}`:'')+`  ·  noise ${noiseLvl.toFixed(0)}`;el.className=c;
   $('camChip').textContent=camActivity==='move'?'✋ movement':'👁 watching';}
 // small picture of the current camera frame (for the snapshot)
 function snapFrame(){try{const el=srcEl(),w=640,h=Math.round(640*srcH()/srcW()),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(el,0,0,w,h);return c;}catch(e){return null;}}
@@ -766,15 +848,16 @@ function saveSnapshot(){
   const before=refShot||now,w=640,h=now.height,pad=150,c=document.createElement('canvas');c.width=w*2+10;c.height=h+pad;
   const x=c.getContext('2d');x.fillStyle='#14161a';x.fillRect(0,0,c.width,c.height);x.drawImage(before,0,0,w,h);x.drawImage(now,w+10,0,w,h);
   let d=null;if(ref&&lastFeat)d=adjDiff(lastFeat,ref);
-  if(H){[[0,before],[w+10,now]].forEach(([ox],idx)=>{x.strokeStyle='rgba(226,180,80,.9)';x.lineWidth=1.5;
+  if(H){[[0,before],[w+10,now]].forEach(([ox],idx)=>{x.save();x.beginPath();x.rect(ox,0,w,h);x.clip();x.strokeStyle='rgba(226,180,80,.9)';x.lineWidth=1.5;
     for(let k=0;k<=8;k++){let [a,b]=applyH(k,0),[cc,dd]=applyH(k,8);x.beginPath();x.moveTo(ox+a*w,b*h);x.lineTo(ox+cc*w,dd*h);x.stroke();[a,b]=applyH(0,k);[cc,dd]=applyH(8,k);x.beginPath();x.moveTo(ox+a*w,b*h);x.lineTo(ox+cc*w,dd*h);x.stroke();}
-    if(idx===1&&d){x.font='bold 13px system-ui';x.textAlign='center';for(let s=0;s<64;s++){const [px,py]=applyH((s&7)+.5,(s>>3)+.5);x.fillStyle=d[s]>thr()?'#ff4a3a':'rgba(255,255,255,.75)';x.fillText(d[s].toFixed(0),ox+px*w,py*h+4);}}});}
+    if(idx===1&&d){x.font='bold 13px system-ui';x.textAlign='center';for(let s=0;s<64;s++){const [px,py]=applyH((s&7)+.5,(s>>3)+.5);x.fillStyle=d[s]>thr()?'#ff4a3a':'rgba(255,255,255,.75)';x.fillText(d[s].toFixed(0),ox+px*w,py*h+4);}}
+    x.fillStyle='#fff';x.font='bold 15px system-ui';x.textAlign='left';['a1','h1','h8','a8'].forEach((lb,i)=>{const c=corners[i];if(c)x.fillText(lb,ox+c[0]*w+4,c[1]*h-4);});x.restore();});}
   x.textAlign='left';x.fillStyle='#e8e6e1';x.font='bold 15px system-ui';
   x.fillText('BEFORE (last confirmed position)',8,h+22);x.fillText('NOW',w+18,h+22);
   x.font='13px ui-monospace,monospace';x.fillStyle='#bbb';
   const top=d?Array.from(d).map((v,i)=>[sqName(i),v]).sort((a,b)=>b[1]-a[1]).slice(0,6).map(a=>a[0]+':'+a[1].toFixed(0)).join(' '):'-';
   [`state=${state} mode=${mode} threshold=${thr()} noise=${noiseLvl.toFixed(1)} still=${stillCount} activity=${camActivity} synced=${!!ref&&!needResync}`,
-   `top changes: ${top}   last read: ${lastAnalysis||'never'}`,`moves: ${hist.map(h=>h.san).join(' ')||'-'}`,`status: ${$('status').textContent.slice(0,110)}`,`${navigator.userAgent.slice(0,120)}`]
+   `top changes: ${top}   last read: ${lastAnalysis||'never'}   ${trackMsg}   orient=${orientInfo?JSON.stringify(orientInfo,(k,v)=>typeof v==='number'?+v.toFixed(1):v):'-'}`,`moves: ${hist.map(h=>h.san).join(' ')||'-'}`,`status: ${$('status').textContent.slice(0,110)}`,`${navigator.userAgent.slice(0,120)}`]
    .forEach((l,i)=>x.fillText(l,8,h+46+i*20));
   c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='chess-snapshot-'+Date.now()+'.jpg';document.body.appendChild(a);a.click();a.remove();
     setStatus('📸 Snapshot saved to your Downloads. Please attach it in the chat with Claude.','good');},'image/jpeg',0.88);}
@@ -804,7 +887,7 @@ function drawOverlay(){
     try{octx.drawImage(srcEl(),sx,sy,span,span,lx,ly,L,L);}catch(_){}
     octx.strokeStyle='#ff3b30';octx.lineWidth=2*dpr;octx.beginPath();octx.moveTo(lx+L/2,ly);octx.lineTo(lx+L/2,ly+L);octx.moveTo(lx,ly+L/2);octx.lineTo(lx+L,ly+L/2);octx.stroke();
     octx.restore();octx.strokeStyle='#e2b450';octx.lineWidth=3*dpr;octx.strokeRect(lx,ly,L,L);}
-  $('camMsg').textContent=mode==='none'?'Press “Start live camera”, or take a photo of the board.':corners.length<4?`Corner ${corners.length+1} of 4: touch the corner of square ${labels[corners.length]}${corners.length===0?' (White’s bottom-left)':''} where the squares end (not the frame). Slide, then let go.`:'';}
+  $('camMsg').textContent=mode==='none'?'Press “Start live camera”, or take a photo of the board.':corners.length<4?`Corner ${corners.length+1} of 4: touch a corner of the squares area (any order, not the wooden frame). Slide to adjust, then let go.`:'';}
 function drawRect(data){
   if(!rectIdx)return;const RW=rect.width,img=rctx.createImageData(RW,RW);
   for(let i=0;i<rectIdx.length;i++){const p=rectIdx[i],o=i*4;img.data[o]=data[p];img.data[o+1]=data[p+1];img.data[o+2]=data[p+2];img.data[o+3]=255;}
@@ -820,7 +903,7 @@ function tick(){
     if(mode==='live'&&video.paused&&stream)video.play().catch(()=>{});
     if(H&&sourceReady()&&!sampleIdx)rebuild();
     if(mode==='live'&&sampleIdx&&sourceReady()){
-      const data=grab(),feat=extract(data);
+      const data=grab();let feat=extract(data);
       // motion: compare with the previous frame, against this camera's own noise level (measured continuously)
       if(prevFeat){const md=Math.max(...sqDiff(feat,prevFeat)),T=thr();
         mdHist.push(md);if(mdHist.length>60)mdHist.shift();
@@ -828,11 +911,16 @@ function tick(){
         const stillThr=Math.max(5,noiseLvl*1.6+2),moveThr=Math.max(T*0.8,noiseLvl*3);
         if(md<stillThr)stillCount++;else{stillCount=0;if(md>moveThr){sawMotion=true;lastMotionAt=Date.now();}}
         camActivity=md>moveThr?'move':stillCount>=4?'still':'settling';}
+      // when the picture is still, check whether the camera has shifted and follow the board
+      if(refGray&&state!=='idle'&&(stillCount===4||(stillCount>4&&stillCount%25===0))){
+        const t=trackCorners(data,16);
+        if(t===-1)trackMsg='camera moved too much: tap the camera picture and re-mark the corners';
+        else if(sampleIdx){feat=extract(data);featHist=[];}}
       prevFeat=feat;
       // average the last 3 frames: removes most sensor noise from the picture the app compares
       featHist.push(feat);if(featHist.length>3)featHist.shift();
       if(stillCount>=2&&featHist.length===3){const av=new Uint8Array(feat.length);for(let k=0;k<feat.length;k++)av[k]=(featHist[0][k]+featHist[1][k]+featHist[2][k])/3;lastFeat=av;}else lastFeat=feat;
-      if(captureNext&&stillCount>=2){captureNext=false;ref=lastFeat.slice();refShot=snapFrame();needResync=false;}
+      if(captureNext&&stillCount>=2){captureNext=false;ref=lastFeat.slice();refShot=snapFrame();setRefGeom(data);needResync=false;}
       updateHeat();drawRect(data);
       if(++renderTick%4===0&&(state==='human'||state==='remove'))renderBoard(curHeat);
       if(sawMotion&&stillCount===7&&$('chkAuto').checked&&!$('modal').classList.contains('show')){sawMotion=false;analyse(false,false);}
@@ -845,7 +933,10 @@ function tick(){
       showCamState();
       updateButtons();
     }else if(mode==='photo'&&sampleIdx&&photoDirty){
-      photoDirty=false;const data=grab();lastFeat=extract(data);updateHeat();drawRect(data);
+      photoDirty=false;let data=grab();
+      // hand-held photos: find the board again by following its 4 corners from the previous photo
+      if(photoRead&&refGray&&ref&&!needResync){const t=trackCorners(data,48);if(t===-1)trackMsg='could not find the board corners: drag the dots onto the corners and tap Re-read photo';photoDirty=false;}
+      lastFeat=extract(data);updateHeat();drawRect(data);
       if(photoRead){photoRead=false;analyse(false,true);}
       renderBoard(curHeat);}
     drawOverlay();
@@ -867,9 +958,13 @@ overlay.addEventListener('pointermove',e=>{if(dragging<0)return;const [x,y]=ptr(
 function endDrag(){
   if(dragging<0)return;dragging=-1;loupe=null;
   if(corners.length<4)return;
+  if(addingCorner){
+    const o=orderCorners(corners),bad=cornerProblem(o);
+    if(bad){corners=[];H=null;sampleIdx=null;addingCorner=false;setStatus('⚠️ '+bad+' Please tap the 4 corners of the squares area again.','bad');return;}
+    corners=o;rebuild();autoOrient();}
   saveCorners();rebuild();
   if(addingCorner){addingCorner=false;setStep(3);
-    if(state==='idle')setStatus('Corners set. Check the gold grid lines up with the squares (drag a dot to fine-tune). Set up your pieces, choose your colour, then press <b>Start game</b>.');
+    if(state==='idle')setStatus('Corners set. The labels a1/h1/h8/a8 were placed automatically. Check that <b>a1 is next to White’s queen-side rook</b>, and the gold grid sits on the squares. If not, tap <b>↻ Turn labels</b>. Then press <b>Start game</b>.');
     else{setStatus('Corners set. If the board matches the screen, press <b>⟳ Re-sync board</b>.');needResync=true;}
     return;}
   // live: the camera framing changed slightly, so the current view becomes the new reference
@@ -888,10 +983,11 @@ $('camSel').onchange=()=>startCamera($('camSel').value);
 $('photoCap').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
 $('photoUp').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
 $('btnReread').onclick=()=>{photoDirty=true;photoRead=true;};
+$('btnTurn').onclick=()=>{if(corners.length!==4)return;corners=corners.slice(1).concat(corners.slice(0,1));saveCorners();rebuild();setStatus('Labels turned. a1 should be next to White’s queen-side rook.');if(state!=='idle')needResync=true;};
 $('btnCorners').onclick=()=>{corners=[];H=null;sampleIdx=null;setStep(2);setStatus('Tap the 4 outer corners: a1, h1, h8, a8.');};
 $('btnStart').onclick=()=>{speak(' ');beep(true);startGame();};
 $('btnDone').onclick=()=>{if(state==='remove')confirmRemoval();else if(state==='human')analyse(true,false);};
-$('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=snapFrame();stableKey='';stableDone='';waitKey=null;needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
+$('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=snapFrame();setRefGeom();stableKey='';stableDone='';waitKey=null;needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
   if(state==='remove'){removeSq=-1;state='human';engineCard();}
   setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
@@ -907,7 +1003,7 @@ renderBoard();tick();
 // shared with extras.js (Two players / Learn / History tabs)
 window.CCApp={san,moveText,pname,SF,toFen,sqName,speak,beep,GLYPH};
 // for automated testing only
-window.__ccc={diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
+window.__ccc={get corners(){return corners},get orient(){return orientInfo},get track(){return trackMsg},diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
   board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
   legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
 })();
