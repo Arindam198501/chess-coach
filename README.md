@@ -38,7 +38,7 @@ Then open **http://localhost:8000** in Chrome. Double-clicking `index.html` open
 ## Playing
 
 1. **Camera:** put the phone or a USB webcam on a stand **directly above** the board, with the whole board in view and even lighting.
-2. Press **Start live camera**, then tap the 4 outer board corners in order: **a1 → h1 → h8 → a8** (a1 is White's bottom-left). Check that the gold grid lines up with the squares, and drag a dot to adjust if needed.
+2. Press **Start live camera**, then mark the 4 corners of the **squares area** in order: **a1 → h1 → h8 → a8** (a1 is White's bottom-left). Use the corners where the 64 squares end, **not the wooden frame or border**. Press, slide while watching the magnifier, then let go. Check that the gold grid lines up with the squares.
 3. Set up your pieces in the starting position. The engine plays **only on the screen**, so you never move its pieces. You can leave the engine's pieces off your board entirely. Choose **I play** and the **Engine** level, then press **Start game**.
 4. When the game starts, the camera shrinks to a small thumbnail at the top right. It keeps watching the board. Tap it to open the full camera view, for example to re-mark the corners.
 5. Make your move and take your hand away. About a second later the app reads the move.
@@ -54,6 +54,13 @@ Then open **http://localhost:8000** in Chrome. Double-clicking `index.html` open
 **Without a camera:** tap moves on the screen board.
 
 Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last move and the engine's reply. After taking back, put the pieces back and press Re-sync.
+
+## Getting reliable reads on a real board
+
+- **The phone must not move during the game.** Use a stand, tripod or a book stack; handheld won't work in live mode. If it gets bumped, tap the camera thumbnail, drag the corner dots back and press **Re-sync board**.
+- Shoot from as high and straight above as you can. Tall pieces then lean less into neighbouring squares.
+- **Glossy boards:** keep the glare spot small. Move the lamp, or tilt the phone slightly so the reflection falls off the board.
+- If the app is unsure, it asks "Did you play …?". One tap confirms.
 
 ## Known limits (stage 1)
 

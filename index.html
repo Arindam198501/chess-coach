@@ -20,8 +20,8 @@
   #videoWrap{position:relative;background:#000;border-radius:8px;overflow:hidden;min-height:180px}
   #video,#photo{display:block;width:100%;height:auto}
   #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
-  #camMsg{min-height:3.3em;display:flex;align-items:center;padding:6px 12px;margin-bottom:8px;border-radius:8px;background:#3a3220;border:1px solid var(--accent);font-size:15px;font-weight:600}
-  #camMsg:empty{display:none}
+  #camMsg{height:4.6em;overflow:hidden;line-height:1.3;display:flex;align-items:center;padding:6px 12px;margin-bottom:8px;border-radius:8px;background:#3a3220;border:1px solid var(--accent);font-size:15px;font-weight:600}
+  #camMsg:empty{visibility:hidden}
   #modeTag{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.65);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
   button,select,.btn{background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;display:inline-block}
@@ -129,7 +129,7 @@
     </div>
     <ol class="steps">
       <li id="st1" class="now">Put the phone/webcam <b>directly above</b> the board, with the whole board in view.</li>
-      <li id="st2">Tap the 4 <b>outer corners</b> of the board in order: <b>a1 → h1 → h8 → a8</b> (a1 = White’s bottom-left). Drag a dot to adjust.</li>
+      <li id="st2">Tap the 4 corners of the <b>squares area</b> (where the 64 squares end, <b>not</b> the wooden frame or border) in order: <b>a1 → h1 → h8 → a8</b> (a1 = White’s bottom-left). A magnifier helps you place each dot; drag a dot later to adjust.</li>
       <li id="st3">Set up the starting position, choose your colour and level, then press <b>Start game</b>. The engine plays only on the screen, so you move just your own pieces. You can leave the engine’s pieces off your board.</li>
     </ol>
     <div id="rectWrap">
@@ -320,7 +320,7 @@ const sqName=s=>FILES[s&7]+((s>>3)+1);
 
 // ================= game state =================
 let game=startPos(), hist=[], humanColor=1, state='idle'; // idle | human | thinking | engine | over
-let pending=null, removeSq=-1, lastEngine=null, selected=-1, hintMove=null, needResync=false, lastEval='';
+let pending=null, waitKey=null, removeSq=-1, lastEngine=null, selected=-1, hintMove=null, needResync=false, lastEval='';
 
 // ================= Stockfish (UCI in a Web Worker) =================
 const SF={w:null,ready:false,listeners:[],queue:Promise.resolve(),
@@ -632,11 +632,25 @@ function saveCorners(){try{localStorage.setItem('ccc_corners_'+mode,JSON.stringi
 function loadCorners(){try{const c=JSON.parse(localStorage.getItem('ccc_corners_'+mode)||'[]');if(Array.isArray(c)&&c.length===4)corners=c;}catch(e){}}
 
 function extract(data){const out=new Uint8Array(64*SPS*3);for(let i=0,k=0;i<sampleIdx.length;i++){const p=sampleIdx[i];out[k++]=data[p];out[k++]=data[p+1];out[k++]=data[p+2];}return out;}
-const pixD=new Float32Array(SPS);
+const pixD=new Float32Array(SPS),glareM=new Uint8Array(SPS);
+// Per-square change score, robust to real boards:
+//  - glare (pure white reflections) is ignored
+//  - each square's average colour is removed first, so shadows / lighting shifts barely count;
+//    a small part of the average-colour change is added back (a piece also changes the average)
+//  - score = mean of the strongest pixel changes (a piece covers only part of its square)
 function sqDiff(a,b){const d=new Float32Array(64);
-  for(let s=0;s<64;s++){const o=s*SPS*3;
-    for(let k=0;k<SPS;k++){const q=o+k*3;pixD[k]=(Math.abs(a[q]-b[q])+Math.abs(a[q+1]-b[q+1])+Math.abs(a[q+2]-b[q+2]))/3;}
-    pixD.sort();let t=0;for(let k=SPS-TOPK;k<SPS;k++)t+=pixD[k];d[s]=t/TOPK;}
+  for(let s=0;s<64;s++){const o=s*SPS*3;let a0=0,a1=0,a2=0,b0=0,b1=0,b2=0,n=0;
+    for(let k=0;k<SPS;k++){const q=o+k*3;
+      const g=(a[q]>238&&a[q+1]>238&&a[q+2]>238)||(b[q]>238&&b[q+1]>238&&b[q+2]>238);glareM[k]=g?1:0;
+      if(g)continue;n++;a0+=a[q];a1+=a[q+1];a2+=a[q+2];b0+=b[q];b1+=b[q+1];b2+=b[q+2];}
+    if(n<SPS*0.25){d[s]=0;continue;}
+    a0/=n;a1/=n;a2/=n;b0/=n;b1/=n;b2/=n;
+    for(let k=0;k<SPS;k++){if(glareM[k]){pixD[k]=-1;continue;}const q=o+k*3;
+      const e0=a[q]-a0-b[q]+b0,e1=a[q+1]-a1-b[q+1]+b1,e2=a[q+2]-a2-b[q+2]+b2,em=(e0+e1+e2)/3;
+      // colourless brightening/darkening (glare, shadow edges) counts half; colour changes count fully
+      pixD[k]=0.5*Math.abs(em)+0.9*(Math.abs(e0-em)+Math.abs(e1-em)+Math.abs(e2-em));}
+    pixD.sort();const K=Math.max(6,Math.round(TOPK*n/SPS));let t=0;for(let k=SPS-K;k<SPS;k++)t+=pixD[k];
+    d[s]=t/K+0.3*(Math.abs(a0-b0)+Math.abs(a1-b1)+Math.abs(a2-b2))/3;}
   return d;}
 function adjDiff(a,b){const d=sqDiff(a,b);const med=Array.from(d).sort((x,y)=>x-y)[32];for(let s=0;s<64;s++)d[s]=Math.max(0,d[s]-med);return d;}
 function captureRef(){if(lastFeat&&H){ref=lastFeat.slice();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
@@ -645,7 +659,7 @@ function changeSet(m,mover){const S=[m.f,m.t];
   if(m.fl&F_EP)S.push(m.t-8*mover);
   if(m.fl&F_CASTLE){if(m.t===6)S.push(7,5);else if(m.t===2)S.push(0,3);else if(m.t===62)S.push(63,61);else if(m.t===58)S.push(56,59);}
   return S;}
-function scoreMove(d,m,mover){const S=changeSet(m,mover);let mn=1e9,mx=0;for(const s of S)mn=Math.min(mn,d[s]);for(let s=0;s<64;s++)if(!S.includes(s))mx=Math.max(mx,d[s]);return {m,minS:mn,maxOut:mx,score:mn-mx};}
+function scoreMove(d,m,mover){const S=changeSet(m,mover);let mn=1e9,mx=0;for(const s of S)mn=Math.min(mn,d[s]);for(let s=0;s<64;s++)if(!S.includes(s))mx=Math.max(mx,d[s]);let sm=0;for(const s of S)sm+=d[s];return {m,minS:mn,meanS:sm/S.length,maxOut:mx,score:mn-mx};}
 
 // force = user explicitly asked (button) ; fromPhoto = a new photo was taken
 function analyse(force,fromPhoto){
@@ -658,22 +672,30 @@ function analyse(force,fromPhoto){
     const L=legal(game);
     const res=L.map(m=>scoreMove(d,m,game.turn)).sort((a,b)=>b.score-a.score);
     const uniq=[];for(const r of res)if(!uniq.some(u=>u.m.f===r.m.f&&u.m.t===r.m.t))uniq.push(r);
-    const b=uniq[0];
-    // a clean read: the move's squares changed clearly AND nothing else did (no hand/shadow left on the board)
-    const clean=b&&b.minS>T&&b.score>T*0.5&&(b.maxOut<T*0.6||force||fromPhoto);
-    if(b&&b.minS>T&&b.score>T*0.5&&!clean)return; // probably a hand still near the board: wait for the next still moment
-    if(clean){choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+    const b=uniq[0],c2=uniq[1],T2=force||fromPhoto;
+    // clear read: the move's squares changed clearly, and clearly more than any other square
+    const strong=b&&b.minS>T*0.7&&b.meanS>T;
+    const clean=strong&&b.minS>T&&b.maxOut<Math.max(T*0.6,b.minS*0.6);
+    const likely=strong&&b.maxOut<b.minS*0.85&&(!c2||c2.score<b.score-T*0.3);
+    if(clean||(T2&&likely)){waitKey=null;choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+    if(likely&&!T2){ // something else changed a bit too (hand nearby, glare): wait one more still moment, then ask
+      const key=b.m.f+'-'+b.m.t;if(waitKey!==key){waitKey=key;return;}
+      // same answer after the board stayed still a while longer: accept it
+      waitKey=null;choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+    waitKey=null;
     const opts=uniq.filter(r=>r.minS>T*0.5).slice(0,3);
     const box=$('cands');box.innerHTML='';
     if(opts.length){
-      setStatus('I’m not sure which move you made. Tap it below, or tap it on the board.','bad');
-      opts.forEach(r=>{const bt=document.createElement('button');bt.textContent=mt(r.m);bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
+      setStatus(likely?`Did you play <b>${mt(b.m)}</b>? Tap to confirm, or pick another move.`:'I’m not sure which move you made. Tap it below, or tap it on the board.','bad');
+      opts.forEach((r,i)=>{const bt=document.createElement('button');bt.textContent=(i===0&&likely?'✓ Yes, ':'')+mt(r.m);if(i===0)bt.className='primary';bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
       beep(false);
+      const cr=$('cands').getBoundingClientRect();if(cr.top<0||cr.bottom>window.innerHeight)$('cands').scrollIntoView({behavior:'smooth',block:'center'});
     }else if(force||fromPhoto||maxD>T*1.5){setStatus('That doesn’t look like a legal move from this position. Check your board matches the screen, or tap your move on the screen board.','bad');beep(false);}
   }else if(state==='remove'&&removeSq>=0){
     if(force){confirmRemoval();return;}
     const v=d[removeSq];let other=0;for(let k=0;k<64;k++)if(k!==removeSq)other=Math.max(other,d[k]);
-    if(v>T&&(other<T*0.6||(fromPhoto&&other<v-T*0.5))){confirmRemoval();return;}
+    if(v>T&&(other<Math.max(T*0.6,v*0.6)||(fromPhoto&&other<v*0.85))){waitKey=null;confirmRemoval();return;}
+    if(!fromPhoto&&v>T*0.7&&other<v*0.85){if(waitKey!=='rm'){waitKey='rm';return;}waitKey=null;confirmRemoval();return;} // second look: accept
     if(fromPhoto)setStatus(v<T?`I don’t see the piece removed from ${sqName(removeSq)} yet. Remove it, then take a new photo.`:`Something else changed on the board too. Only remove the piece on ${sqName(removeSq)}, or press ✓ Piece removed.`,'bad');}
 }
 
@@ -696,14 +718,20 @@ function drawOverlay(){
       [a,b]=applyH(0,k);[c,d]=applyH(8,k);octx.beginPath();octx.moveTo(a*w,b*h);octx.lineTo(c*w,d*h);octx.stroke();}}
   corners.forEach((c,i)=>{octx.fillStyle='#e2b450';octx.beginPath();octx.arc(c[0]*w,c[1]*h,9*dpr,0,7);octx.fill();
     octx.font=`bold ${14*dpr}px system-ui`;octx.fillStyle='#000';octx.fillText(labels[i],c[0]*w+11*dpr+1,c[1]*h-9*dpr+1);octx.fillStyle='#fff';octx.fillText(labels[i],c[0]*w+11*dpr,c[1]*h-9*dpr);});
-  $('camMsg').textContent=corners.length<4?`Tap the outer corner of square ${labels[corners.length]}${corners.length===0?' (White’s bottom-left)':''}`:'';}
+  if(loupe&&sourceReady()){const sw=srcW(),sh=srcH(),L=Math.round(Math.min(w,h)*0.38),disp=w/sw,zoom=3,span=L/(disp*zoom);
+    const lx=loupe[0]<0.5?w-L-8:8,ly=8,sx=loupe[0]*sw-span/2,sy=loupe[1]*sh-span/2;
+    octx.save();octx.beginPath();octx.rect(lx,ly,L,L);octx.clip();octx.fillStyle='#000';octx.fillRect(lx,ly,L,L);
+    try{octx.drawImage(srcEl(),sx,sy,span,span,lx,ly,L,L);}catch(_){}
+    octx.strokeStyle='#ff3b30';octx.lineWidth=2*dpr;octx.beginPath();octx.moveTo(lx+L/2,ly);octx.lineTo(lx+L/2,ly+L);octx.moveTo(lx,ly+L/2);octx.lineTo(lx+L,ly+L/2);octx.stroke();
+    octx.restore();octx.strokeStyle='#e2b450';octx.lineWidth=3*dpr;octx.strokeRect(lx,ly,L,L);}
+  $('camMsg').textContent=mode==='none'?'Press “Start live camera”, or take a photo of the board.':corners.length<4?`Corner ${corners.length+1} of 4: touch the corner of square ${labels[corners.length]}${corners.length===0?' (White’s bottom-left)':''} where the squares end (not the frame). Slide, then let go.`:'';}
 function drawRect(data){
   if(!rectIdx)return;const RW=rect.width,img=rctx.createImageData(RW,RW);
   for(let i=0;i<rectIdx.length;i++){const p=rectIdx[i],o=i*4;img.data[o]=data[p];img.data[o+1]=data[p+1];img.data[o+2]=data[p+2];img.data[o+3]=255;}
   rctx.putImageData(img,0,0);const c=RW/8;
   if(curHeat&&$('chkHeat').checked)for(let s=0;s<64;s++){const v=curHeat[s];if(v<0.08)continue;let f=s&7,r=s>>3;if(humanColor===-1){f=7-f;r=7-r;}rctx.fillStyle=`rgba(255,40,40,${Math.min(.55,v*.55)})`;rctx.fillRect(f*c,(7-r)*c,c,c);}
   rctx.strokeStyle='rgba(226,180,80,.7)';rctx.lineWidth=1;for(let k=0;k<=8;k++){rctx.beginPath();rctx.moveTo(k*c,0);rctx.lineTo(k*c,RW);rctx.stroke();rctx.beginPath();rctx.moveTo(0,k*c);rctx.lineTo(RW,k*c);rctx.stroke();}}
-function grab(){pctx.drawImage(srcEl(),0,0,procW,procH);return pctx.getImageData(0,0,procW,procH).data;}
+function grab(){try{pctx.filter='blur(1px)';}catch(e){}pctx.drawImage(srcEl(),0,0,procW,procH);try{pctx.filter='none';}catch(e){}return pctx.getImageData(0,0,procW,procH).data;} // slight blur: marble texture + tiny camera shake stop counting as changes
 function updateHeat(){if(ref&&lastFeat&&!needResync){const d=adjDiff(lastFeat,ref),T=thr();curHeat=Array.from(d).map(v=>Math.max(0,(v-T*0.5)/(T*1.5)));}else curHeat=null;}
 
 let renderTick=0;
@@ -720,6 +748,7 @@ function tick(){
       updateHeat();drawRect(data);
       if(++renderTick%4===0&&(state==='human'||state==='remove'))renderBoard(curHeat);
       if(sawMotion&&stillCount===7&&$('chkAuto').checked&&!$('modal').classList.contains('show')){sawMotion=false;analyse(false,false);}
+      else if(waitKey&&stillCount===20&&!$('modal').classList.contains('show'))analyse(false,false); // second look while still unsure
       updateButtons();
     }else if(mode==='photo'&&sampleIdx&&photoDirty){
       photoDirty=false;const data=grab();lastFeat=extract(data);updateHeat();drawRect(data);
@@ -729,20 +758,29 @@ function tick(){
   }catch(e){console.error(e);}
   setTimeout(tick,120);}
 
+// corner placing: press to drop a dot, slide to fine-tune (a magnifier shows what's under your finger), release to set
+let loupe=null,addingCorner=false;
+function ptr(e){const r=overlay.getBoundingClientRect();return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height)),r];}
 overlay.addEventListener('pointerdown',e=>{
   if(mode==='none')return;
-  const r=overlay.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
-  if(corners.length<4){corners.push([x,y]);
-    if(corners.length===4){rebuild();saveCorners();setStep(3);
-      if(state==='idle')setStatus('Corners set. Check the gold grid lines up with the squares (drag the dots to fine-tune). Set up the pieces, choose your colour, then press <b>Start game</b>.');
-      else{setStatus('Corners set. If the board matches the screen, press <b>⟳ Re-sync board</b>.');needResync=true;}}
+  const [x,y,r]=ptr(e);
+  if(corners.length<4){corners.push([x,y]);dragging=corners.length-1;addingCorner=true;}
+  else{let best=-1,bd=40;corners.forEach((c,i)=>{const d=Math.hypot((c[0]-x)*r.width,(c[1]-y)*r.height);if(d<bd){bd=d;best=i;}});
+    if(best<0)return;dragging=best;addingCorner=false;}
+  try{overlay.setPointerCapture(e.pointerId);}catch(_){}
+  loupe=[x,y];e.preventDefault();});
+overlay.addEventListener('pointermove',e=>{if(dragging<0)return;const [x,y]=ptr(e);corners[dragging]=[x,y];loupe=[x,y];if(corners.length===4)rebuild();});
+function endDrag(){
+  if(dragging<0)return;dragging=-1;loupe=null;
+  if(corners.length<4)return;
+  saveCorners();rebuild();
+  if(addingCorner){addingCorner=false;setStep(3);
+    if(state==='idle')setStatus('Corners set. Check the gold grid lines up with the squares (drag a dot to fine-tune). Set up your pieces, choose your colour, then press <b>Start game</b>.');
+    else{setStatus('Corners set. If the board matches the screen, press <b>⟳ Re-sync board</b>.');needResync=true;}
     return;}
-  let best=-1,bd=36;corners.forEach((c,i)=>{const d=Math.hypot((c[0]-x)*r.width,(c[1]-y)*r.height);if(d<bd){bd=d;best=i;}});
-  if(best>=0){dragging=best;overlay.setPointerCapture(e.pointerId);}});
-overlay.addEventListener('pointermove',e=>{if(dragging<0)return;const r=overlay.getBoundingClientRect();corners[dragging]=[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))];rebuild();});
-overlay.addEventListener('pointerup',()=>{if(dragging<0)return;dragging=-1;saveCorners();rebuild();
   // live: the camera framing changed slightly, so the current view becomes the new reference
-  if(mode==='live'&&state!=='idle'&&!needResync)captureNext=true;});
+  if(mode==='live'&&state!=='idle'&&!needResync)captureNext=true;}
+overlay.addEventListener('pointerup',endDrag);overlay.addEventListener('pointercancel',endDrag);
 
 // ================= buttons =================
 $('camPanel').addEventListener('click',()=>{if(document.body.classList.contains('playing')&&!document.body.classList.contains('camOpen')){document.body.classList.add('camOpen');setTimeout(()=>{sizeWrap();drawOverlay();},50);}});
