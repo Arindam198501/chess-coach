@@ -39,10 +39,11 @@ Then open **http://localhost:8000** in Chrome. Double-clicking `index.html` open
 
 1. **Camera:** put the phone or a USB webcam on a stand **directly above** the board, with the whole board in view and even lighting.
 2. Press **Start live camera**, then tap the 4 outer board corners in order: **a1 → h1 → h8 → a8** (a1 is White's bottom-left). Check that the gold grid lines up with the squares, and drag a dot to adjust if needed.
-3. Set up the starting position, choose **I play** and the **Engine** level (about 1400 up to full strength), then press **Start game**.
+3. Set up your pieces in the starting position. The engine plays **only on the screen**, so you never move its pieces. You can leave the engine's pieces off your board entirely. Choose **I play** and the **Engine** level, then press **Start game**.
 4. When the game starts, the camera shrinks to a small thumbnail at the top right. It keeps watching the board. Tap it to open the full camera view, for example to re-mark the corners.
 5. Make your move and take your hand away. About a second later the app reads the move.
-6. The engine's reply appears in a big green card, e.g. **"♜ Elephant h1 → h5"**, with a green arrow on the screen board, and is spoken aloud. Play it on your board, and the app confirms it automatically.
+6. The engine replies **on the screen board**: a green card says e.g. **"♜ Elephant h1 → h5"**, a green arrow shows it, and the voice reads it out. Nothing to do on your real board. Just make your next move.
+7. **If the engine captures one of your pieces,** the card says e.g. "Remove your Camel from c4". Take it off your real board and the camera notices, or tap ✓ Piece removed.
 
 **Piece names:** the default is Elephant · Camel · Horse. Switch to Rook · Bishop · Knight under **Names**.
 
@@ -56,7 +57,7 @@ Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last
 
 ## Known limits (stage 1)
 
-- Games must start from the normal starting position. The camera spots *which squares changed*; it doesn't identify the pieces.
+- Games must start from the normal starting position. Your real board shows only your own pieces' positions; the full game is on the screen board. The camera spots *which squares changed*; it doesn't identify the pieces.
 - Steep camera angles, moving shadows or a bumped camera cause misreads. Re-mark the corners and press Re-sync.
 - **Change threshold** slider: move it lower if moves are missed, higher if it reacts to shadows.
 

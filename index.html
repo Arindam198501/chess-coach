@@ -130,7 +130,7 @@
     <ol class="steps">
       <li id="st1" class="now">Put the phone/webcam <b>directly above</b> the board, with the whole board in view.</li>
       <li id="st2">Tap the 4 <b>outer corners</b> of the board in order: <b>a1 → h1 → h8 → a8</b> (a1 = White’s bottom-left). Drag a dot to adjust.</li>
-      <li id="st3">Set up the starting position, choose your colour and level, then press <b>Start game</b>.</li>
+      <li id="st3">Set up the starting position, choose your colour and level, then press <b>Start game</b>. The engine plays only on the screen, so you move just your own pieces. You can leave the engine’s pieces off your board.</li>
     </ol>
     <div id="rectWrap">
       <canvas id="rect" width="150" height="150"></canvas>
@@ -320,7 +320,7 @@ const sqName=s=>FILES[s&7]+((s>>3)+1);
 
 // ================= game state =================
 let game=startPos(), hist=[], humanColor=1, state='idle'; // idle | human | thinking | engine | over
-let pending=null, selected=-1, hintMove=null, needResync=false, lastEval='';
+let pending=null, removeSq=-1, lastEngine=null, selected=-1, hintMove=null, needResync=false, lastEval='';
 
 // ================= Stockfish (UCI in a Web Worker) =================
 const SF={w:null,ready:false,listeners:[],queue:Promise.resolve(),
@@ -410,7 +410,7 @@ function renderBoard(heat){
     const d=document.createElement('div');
     d.className='sq '+(((rank+file)&1)?'l':'d');
     if(last&&(last.f===s||last.t===s))d.classList.add('last');
-    if(pending&&(pending.f===s||pending.t===s))d.classList.add('todo');
+    if(s===removeSq)d.classList.add('todo');
     if(hintMove&&(hintMove.f===s||hintMove.t===s))d.classList.add('hint');
     if(s===selected)d.classList.add('sel');
     if(targets.includes(s))d.classList.add('dot');
@@ -421,8 +421,8 @@ function renderBoard(heat){
     if(j===0){const c=document.createElement('span');c.className='coord r';c.textContent=rank+1;d.appendChild(c);}
     d.onclick=()=>onSquareClick(s);
     el.appendChild(d);}
-  const am=pending||hintMove;
-  if(am){const pos=s=>{const f=s&7,r=s>>3;return humanColor===1?[f+.5,7-r+.5]:[7-f+.5,r+.5];};const [x1,y1]=pos(am.f),[x2,y2]=pos(am.t),col=pending?'#2e9e52':'#5a5aff';
+  const am=hintMove||(lastEngine&&last===lastEngine?lastEngine:null);
+  if(am){const pos=s=>{const f=s&7,r=s>>3;return humanColor===1?[f+.5,7-r+.5]:[7-f+.5,r+.5];};const [x1,y1]=pos(am.f),[x2,y2]=pos(am.t),col=hintMove?'#5a5aff':'#2e9e52';
     const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),ex=x2-dx/L*0.32,ey=y2-dy/L*0.32;
     el.insertAdjacentHTML('beforeend',`<svg id="arrow" viewBox="0 0 8 8"><defs><marker id="ah" markerWidth="3" markerHeight="3" refX="1.4" refY="1.5" orient="auto"><path d="M0,0 L3,1.5 L0,3 z" fill="${col}"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}" stroke="${col}" stroke-width="0.2" stroke-linecap="round" opacity=".85" marker-end="url(#ah)"/></svg>`);}
   let html='';hist.forEach((h,k)=>{if(k%2===0)html+=`<b>${k/2+1}.</b> `;html+=h.san+' ';});
@@ -432,10 +432,10 @@ function renderBoard(heat){
 function updateButtons(){
   document.body.classList.toggle('playing',state!=='idle');
   $('btnPhotoPlay').classList.toggle('hide',!(state!=='idle'&&mode!=='live'));
-  $('btnDone').disabled=!(state==='engine'||state==='human');
-  $('btnDone').textContent=state==='engine'?'✓ I made its move':'✓ My move is done';
+  $('btnDone').disabled=!(state==='remove'||state==='human');
+  $('btnDone').textContent=state==='remove'?'✓ Piece removed':'✓ My move is done';
   $('btnHint').disabled=state!=='human';
-  $('btnUndo').disabled=!(hist.length&&(state==='human'||state==='engine'||state==='over'));
+  $('btnUndo').disabled=!(hist.length&&(state==='human'||state==='remove'||state==='over'));
   $('btnSync').disabled=!(H&&lastFeat&&state!=='idle');
   $('btnStart').classList.toggle('hide',state!=='idle');
   $('btnReread').classList.toggle('hide',!(mode==='photo'&&H&&state!=='idle'));}
@@ -446,7 +446,7 @@ function gameOverCheck(){
   const r=gameOverCheck0();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
 function gameOverCheck0(){
   const L=legal(game);
-  if(!L.length){state='over';pending=null;
+  if(!L.length){state='over';removeSq=-1;
     if(inCheck(game,game.turn)){const won=game.turn!==humanColor;setStatus(won?'♛ Checkmate. You win, well played!':'Checkmate. The engine wins. Use Take back to try again, or start a new game.',won?'good':'bad');speak(won?'Checkmate. You win!':'Checkmate.');}
     else{setStatus('Stalemate. It’s a draw.');speak('Stalemate. Draw.');}
     return true;}
@@ -456,7 +456,7 @@ function gameOverCheck0(){
   return false;}
 
 function startGame(){
-  game=startPos();hist=[];pending=null;selected=-1;hintMove=null;lastEval='';
+  game=startPos();hist=[];removeSq=-1;lastEngine=null;selected=-1;hintMove=null;lastEval='';
   humanColor=+$('selColor').value;rebuild();
   clearBig();
   if(SF.ready)SF.w.postMessage('ucinewgame');
@@ -464,7 +464,7 @@ function startGame(){
   setStep(4);
   setTimeout(()=>window.scrollTo({top:0}),30);
   if(humanColor===-1)engineTurn();
-  else{state='human';setStatus('You are White. Good luck!');yourTurnCard();}
+  else{state='human';setStatus('You are White. The engine’s moves will appear only on the screen board.');yourTurnCard();}
   renderBoard();}
 function setCard(kind,label,mainHtml,sub){const c=$('moveCard');c.className=kind;$('mcLabel').textContent=label;$('bigMove').innerHTML=mainHtml||'';$('bigMoveSub').textContent=sub||'';}
 function yourTurnCard(){const chk=inCheck(game,game.turn);setCard('you',chk?'Your turn: you are in check!':'Your turn',mode==='photo'?'Make your move':'Make your move',mode==='photo'?'then tap 📷 Take photo':mode==='live'?'then take your hand away; the camera will read it':'then tap it on the board below');}
@@ -487,27 +487,36 @@ function engineTurn(){
     const m=r&&findLegal(r);if(!m){gameOverCheck();renderBoard();return;}
     setTimeout(()=>{
       if(state!=='thinking')return;
-      pending=m;state='engine';
       const mine=-r.score; // engine's score is from its own side; flip to yours
       lastEval=Math.abs(r.score)>MATE-200?(r.score>0?'Engine sees a forced mate against you.':'You have a forced mate available!'):`Evaluation (your view): ${mine>=0?'+':''}${(mine/100).toFixed(1)}`;
-      const tx=moveText(game,m),s=san(game,m);
-      setCard('engine','Engine’s move: play it on your board',tx.html,(tx.sub?tx.sub+'  ·  ':'')+'('+s+')');
-      setStatus(mode==='photo'?'After moving the piece, tap 📷 Take photo (or ✓ I made its move).':mode==='live'?'Move the piece; the camera will confirm it.':'Tap ✓ I made its move when done.');
-      speak(tx.speech);renderBoard();
+      const tx=moveText(game,m),s=san(game,m),capSq=m.c?(m.fl&F_EP?m.t-8*game.turn:m.t):-1;
+      pushMove(m);lastEngine=m;lastEngineTx={tx,s,cap:m.c};beep(true);
+      if(gameOverCheck()){setCard('over','Engine played',tx.html,$('status').textContent);speak(tx.speech);renderBoard();return;}
+      if(capSq>=0){
+        state='remove';removeSq=capSq;
+        setCard('engine','Engine played',tx.html,`(${s})`+(tx.sub.replace(/^takes [A-Za-z]+( on \w+ \(en passant\))? ?·? ?/,'')?' · '+tx.sub.replace(/^takes [A-Za-z]+( on \w+ \(en passant\))? ?·? ?/,''):'')+` · Remove your ${pname(m.c)} from ${sqName(capSq)} on your board`);
+        setStatus(mode==='photo'?`Take your ${pname(m.c)} off ${sqName(capSq)}, then tap 📷 Take photo.`:mode==='live'?`Take your ${pname(m.c)} off ${sqName(capSq)}. The camera will notice.`:`Take your ${pname(m.c)} off ${sqName(capSq)}, then tap ✓ Piece removed.`,'bad');
+        speak(`${tx.speech}. Remove your ${pname(m.c)} from ${sqName(capSq)}.`);
+      }else{state='human';engineCard();setStatus(inCheck(game,game.turn)?'You are in <b>check</b>!':'Your turn.',inCheck(game,game.turn)?'bad':'');speak(tx.speech);}
+      renderBoard();
       const cr=$('moveCard').getBoundingClientRect();if(cr.top<0||cr.bottom>window.innerHeight)$('moveCard').scrollIntoView({behavior:'smooth',block:'start'});
     },Math.max(0,400-(Date.now()-t0)));
   });}
 
-function confirmEngine(){
-  if(!pending)return;
-  const m=pending;pending=null;pushMove(m);captureRef();beep(true);clearBig();
-  if(gameOverCheck()){renderBoard();return;}
-  state='human';yourTurnCard();
-  setStatus(inCheck(game,game.turn)?'You are in <b>check</b>!':'Engine’s move confirmed.',inCheck(game,game.turn)?'bad':'good');
+let lastEngineTx=null;
+// card shown on your turn right after the engine moved
+function engineCard(){
+  if(!lastEngineTx){yourTurnCard();return;}
+  const {tx,s}=lastEngineTx;
+  setCard('engine','Engine played · your turn',tx.html,`(${s})`+(tx.sub?' · '+tx.sub:'')+` · now make your move`+(mode==='photo'?', then tap 📷 Take photo':' on your board'));}
+function confirmRemoval(){
+  if(state!=='remove')return;
+  removeSq=-1;captureRef();beep(true);state='human';engineCard();
+  setStatus(inCheck(game,game.turn)?'Thanks. You are in <b>check</b>!':'Thanks. Your turn.',inCheck(game,game.turn)?'bad':'good');
   renderBoard();}
 
 function onSquareClick(s){
-  if(state==='engine'){if(pending&&(s===pending.t||s===pending.f))confirmEngine();return;}
+  if(state==='remove'){if(s===removeSq)confirmRemoval();return;}
   if(state!=='human')return;
   const x=game.b[s];
   if(selected>=0){
@@ -523,11 +532,11 @@ function askPromo(color){
 
 function undo(){
   if(!hist.length||state==='thinking')return;
-  pending=null;
+  removeSq=-1;lastEngine=null;lastEngineTx=null;
   while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
   if(game.turn!==humanColor){engineTurn();return;}
   state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();yourTurnCard();
-  setStatus('Moves taken back. Set your real board to match the screen, then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
+  setStatus('Moves taken back. Undo your last move on the real board (and put back any piece you removed), then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
   renderBoard();}
 
 function hint(){
@@ -661,12 +670,11 @@ function analyse(force,fromPhoto){
       opts.forEach(r=>{const bt=document.createElement('button');bt.textContent=mt(r.m);bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
       beep(false);
     }else if(force||fromPhoto||maxD>T*1.5){setStatus('That doesn’t look like a legal move from this position. Check your board matches the screen, or tap your move on the screen board.','bad');beep(false);}
-  }else if(state==='engine'&&pending){
-    if(force){confirmEngine();return;}
-    if(maxD<T){if(fromPhoto)setStatus(`No change seen yet. Play <b>${mt(pending)}</b> on your board, then take a photo.`,'bad');return;}
-    const r=scoreMove(d,pending,game.turn);
-    if(r.minS>T*0.8&&r.score>T*0.3){if(r.maxOut<T*0.6||fromPhoto){confirmEngine();return;}if(!fromPhoto)return;}
-    setStatus(`That doesn’t look like <b>${mt(pending)}</b> yet. Please make exactly that move, or press <b>✓ I made its move</b>.`,'bad');beep(false);}
+  }else if(state==='remove'&&removeSq>=0){
+    if(force){confirmRemoval();return;}
+    const v=d[removeSq];let other=0;for(let k=0;k<64;k++)if(k!==removeSq)other=Math.max(other,d[k]);
+    if(v>T&&(other<T*0.6||(fromPhoto&&other<v-T*0.5))){confirmRemoval();return;}
+    if(fromPhoto)setStatus(v<T?`I don’t see the piece removed from ${sqName(removeSq)} yet. Remove it, then take a new photo.`:`Something else changed on the board too. Only remove the piece on ${sqName(removeSq)}, or press ✓ Piece removed.`,'bad');}
 }
 
 function drawPoly(f,r,fill,stroke){
@@ -681,9 +689,7 @@ function drawOverlay(){
   const labels=['a1','h1','h8','a8'];
   if(H){
     if(curHeat&&$('chkHeat').checked)for(let s=0;s<64;s++){const v=curHeat[s];if(v>0.08)drawPoly(s&7,s>>3,`rgba(255,40,40,${Math.min(0.5,v*0.5)})`);}
-    if(pending){drawPoly(pending.f&7,pending.f>>3,'rgba(80,200,110,.35)','#5fbf7a');drawPoly(pending.t&7,pending.t>>3,'rgba(80,200,110,.6)','#5fbf7a');
-      const [x1,y1]=applyH((pending.f&7)+.5,(pending.f>>3)+.5),[x2,y2]=applyH((pending.t&7)+.5,(pending.t>>3)+.5);
-      octx.strokeStyle='#5fbf7a';octx.lineWidth=5*dpr;octx.beginPath();octx.moveTo(x1*w,y1*h);octx.lineTo(x2*w,y2*h);octx.stroke();}
+    if(removeSq>=0)drawPoly(removeSq&7,removeSq>>3,'rgba(240,80,60,.45)','#e06c5f');
     if(hintMove){drawPoly(hintMove.f&7,hintMove.f>>3,null,'#8a8aff');drawPoly(hintMove.t&7,hintMove.t>>3,'rgba(120,120,255,.4)','#8a8aff');}
     octx.strokeStyle='rgba(226,180,80,.85)';octx.lineWidth=1.5*dpr;
     for(let k=0;k<=8;k++){let [a,b]=applyH(k,0),[c,d]=applyH(k,8);octx.beginPath();octx.moveTo(a*w,b*h);octx.lineTo(c*w,d*h);octx.stroke();
@@ -712,7 +718,7 @@ function tick(){
       prevFeat=feat;lastFeat=feat;
       if(captureNext){captureNext=false;ref=feat.slice();needResync=false;}
       updateHeat();drawRect(data);
-      if(++renderTick%4===0&&(state==='human'||state==='engine'))renderBoard(curHeat);
+      if(++renderTick%4===0&&(state==='human'||state==='remove'))renderBoard(curHeat);
       if(sawMotion&&stillCount===7&&$('chkAuto').checked&&!$('modal').classList.contains('show')){sawMotion=false;analyse(false,false);}
       updateButtons();
     }else if(mode==='photo'&&sampleIdx&&photoDirty){
@@ -750,12 +756,13 @@ $('photoUp').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
 $('btnReread').onclick=()=>{photoDirty=true;photoRead=true;};
 $('btnCorners').onclick=()=>{corners=[];H=null;sampleIdx=null;setStep(2);setStatus('Tap the 4 outer corners: a1, h1, h8, a8.');};
 $('btnStart').onclick=()=>{speak(' ');beep(true);startGame();};
-$('btnDone').onclick=()=>{if(state==='engine')confirmEngine();else if(state==='human')analyse(true,false);};
+$('btnDone').onclick=()=>{if(state==='remove')confirmRemoval();else if(state==='human')analyse(true,false);};
 $('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
-  setStatus(state==='engine'&&pending?`Synced. Now play the engine’s move <b>${mt(pending)}</b>.`:'Board re-synced. Your move.','good');renderBoard();};
+  if(state==='remove'){removeSq=-1;state='human';engineCard();}
+  setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
 $('btnHint').onclick=hint;
-$('btnNew').onclick=()=>{state='idle';pending=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
+$('btnNew').onclick=()=>{state='idle';removeSq=-1;lastEngine=null;lastEngineTx=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
   setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
 $('selColor').onchange=()=>{if(state==='idle'){humanColor=+$('selColor').value;rebuild();renderBoard();}};
 window.addEventListener('resize',()=>{sizeWrap();drawOverlay();});
@@ -763,7 +770,7 @@ video.addEventListener('loadedmetadata',sizeWrap);
 
 renderBoard();tick();
 // for automated testing only
-window.__ccc={diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get pending(){return pending&&{f:pending.f,t:pending.t,p:pending.p}},get engineReady(){return SF.ready},
+window.__ccc={diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
   board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
   legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
 })();
