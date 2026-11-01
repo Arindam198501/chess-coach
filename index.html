@@ -20,7 +20,7 @@
   #videoWrap{position:relative;background:#000;border-radius:8px;overflow:hidden;min-height:180px}
   #video,#photo{display:block;width:100%;height:auto}
   #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
-  #camMsg{position:absolute;left:0;right:0;top:0;padding:10px 12px;background:rgba(0,0,0,.7);font-size:14px;pointer-events:none}
+  #camMsg{min-height:3.3em;display:flex;align-items:center;padding:6px 12px;margin-bottom:8px;border-radius:8px;background:#3a3220;border:1px solid var(--accent);font-size:15px;font-weight:600}
   #camMsg:empty{display:none}
   #modeTag{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.65);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
@@ -41,9 +41,33 @@
   #rectNote{font-size:12.5px;color:var(--muted)}
   #status{font-size:16px;padding:10px 12px;border-radius:8px;background:#262a31;border-left:4px solid var(--accent);min-height:44px}
   #status.good{border-left-color:var(--good)} #status.bad{border-left-color:var(--bad)}
-  #bigMove{font-size:32px;font-weight:700;text-align:center;margin:10px 0 2px;color:var(--accent)}
-  #bigMove:empty{display:none}
-  #bigMoveSub{text-align:center;color:var(--muted);font-size:14px}
+  #moveCard{display:none;text-align:center;border-radius:12px;padding:12px 10px;margin-bottom:10px;background:#262a31;border:2px solid #3a3f49}
+  body.playing #moveCard{display:block}
+  #moveCard.engine{border-color:var(--good);background:#1f2d24}
+  #moveCard.you{border-color:var(--accent)}
+  #moveCard.over{border-color:var(--bad)}
+  #mcLabel{font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  #moveCard.engine #mcLabel{color:var(--good)}
+  #bigMove{font-size:clamp(26px,8vw,40px);font-weight:800;margin:4px 0 2px;line-height:1.15}
+  #bigMove .pc{font-size:1.15em;margin-right:6px}
+  #bigMoveSub{color:var(--text);font-size:15px;opacity:.85}
+  #bigMoveSub:empty{display:none}
+  body.playing #status{font-size:14px;min-height:0;padding:8px 10px}
+  body.playing main{grid-template-columns:minmax(0,640px);justify-content:center}
+  #videoWrap{margin:0 auto}
+  #camTop{display:flex;align-items:center;justify-content:space-between}
+  #camClose{display:none}
+  #camChip{display:none;font-size:11px;text-align:center;color:var(--muted);padding-top:3px;line-height:1.2}
+  body.playing:not(.camOpen) #camPanel{position:absolute;right:8px;top:6px;width:100px;padding:3px;z-index:40;cursor:pointer;box-shadow:0 4px 14px #000a}
+  body.playing header{padding-right:120px;min-height:100px}
+  body.playing:not(.camOpen) #camTop,body.playing:not(.camOpen) #camExtras,body.playing:not(.camOpen) #camMsg,body.playing:not(.camOpen) #modeTag{display:none}
+  body.playing:not(.camOpen) #overlay{display:none}
+  body.playing:not(.camOpen) #videoWrap{min-height:60px;max-width:none!important}
+  body.playing:not(.camOpen) #camChip{display:block}
+  body.playing.camOpen #camPanel{position:fixed;inset:0;z-index:40;border-radius:0;overflow:auto}
+  body.playing.camOpen #camClose{display:inline-block}
+  #board{position:relative}
+  #arrow{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6}
   #cands{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;justify-content:center}
   #cands:empty{display:none}
   #board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;max-width:440px;aspect-ratio:1;margin:12px auto 0;border:3px solid #3b2f22;border-radius:4px;user-select:none}
@@ -85,14 +109,16 @@
 
 <main>
   <section id="camPanel">
-    <h2>Camera</h2>
+    <div id="camTop"><h2>Camera</h2><button id="camClose">✕ Back to game</button></div>
+    <div id="camMsg">Press “Start live camera”, or take a photo of the board.</div>
     <div id="videoWrap">
       <video id="video" playsinline muted autoplay></video>
       <img id="photo" class="hide" alt="Board photo">
       <canvas id="overlay"></canvas>
-      <div id="camMsg">Press “Start live camera”, or take a photo of the board.</div>
       <div id="modeTag" class="hide"></div>
     </div>
+    <div id="camChip">👁 camera · tap</div>
+    <div id="camExtras">
     <div class="row">
       <button id="btnCam" class="primary">Start live camera</button>
       <label class="btn" for="photoCap">📷 Take photo</label><input type="file" id="photoCap" accept="image/*" capture="environment">
@@ -115,17 +141,18 @@
       <label title="Lower = more sensitive">Change threshold <input type="range" id="sens" min="6" max="40" value="16"></label>
       <label><input type="checkbox" id="chkHeat" checked> Show changes</label>
     </div>
+    </div>
   </section>
 
   <section id="gamePanel">
     <h2>Game</h2>
+    <div id="moveCard"><div id="mcLabel"></div><div id="bigMove"></div><div id="bigMoveSub"></div></div>
     <div id="status">Start the live camera (or take a photo) and mark the board corners. You can also play without a camera by tapping moves on the board below.</div>
-    <div id="bigMove"></div>
-    <div id="bigMoveSub"></div>
     <div id="cands"></div>
     <div class="row" style="justify-content:center">
       <button id="btnStart" class="primary big">Start game</button>
       <button id="btnDone" class="big" disabled>✓ My move is done</button>
+      <label class="btn big hide" for="photoCap" id="btnPhotoPlay">📷 Take photo</label>
     </div>
     <div id="board"></div>
     <div class="eval" id="evalLine"></div>
@@ -141,6 +168,7 @@
         <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
         <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
       </select></label>
+      <label>Names <select id="selNames"><option value="indian" selected>Elephant · Camel · Horse</option><option value="intl">Rook · Bishop · Knight</option></select></label>
       <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
     </div>
     <div id="moves"></div>
@@ -285,7 +313,8 @@ function think(p,maxDepth,timeMs,noise){
 (function(){
 const $=id=>document.getElementById(id);
 const FILES='abcdefgh';
-const NAME=['','pawn','knight','bishop','rook','queen','king'];
+const NAMES={indian:['','Pawn','Horse','Camel','Elephant','Queen','King'],intl:['','Pawn','Knight','Bishop','Rook','Queen','King']};
+function pname(t){return NAMES[$('selNames').value||'indian'][t];}
 const GLYPH=['','♟','♞','♝','♜','♛','♚'];
 const sqName=s=>FILES[s&7]+((s>>3)+1);
 
@@ -349,15 +378,18 @@ function san(p,m){
     s+=(m.c?'x':'')+sqName(m.t);}
   const u=make(p,m);if(inCheck(p,p.turn))s+=legal(p).length?'+':'#';unmake(p,m,u);
   return s;}
-function describe(p,m){
-  const t=Math.abs(p.b[m.f]);let s;
+// Plain-language description of a move: {main, sub, speech, html}
+function moveText(p,m){
+  const t=Math.abs(p.b[m.f]),col=p.b[m.f]>0?'w':'b',sub=[];let main,speech;
   if(m.fl&F_CASTLE){const k=(m.t&7)===6,rf=k?m.t+1:m.t-2,rt=k?m.t-1:m.t+1;
-    s=`Castles ${k?'king':'queen'} side. King ${sqName(m.f)} to ${sqName(m.t)}, rook ${sqName(rf)} to ${sqName(rt)}`;}
-  else{s=`${NAME[t][0].toUpperCase()+NAME[t].slice(1)} ${sqName(m.f)} to ${sqName(m.t)}`;
-    if(m.c)s+=`, takes ${NAME[m.c]}`+(m.fl&F_EP?' en passant':'');
-    if(m.p)s+=`, promotes to ${NAME[m.p]}`;}
-  const u=make(p,m);if(inCheck(p,p.turn))s+=legal(p).length?'. Check!':'. Checkmate!';unmake(p,m,u);
-  return s;}
+    main=`${pname(6)} ${sqName(m.f)} → ${sqName(m.t)}`;sub.push(`and ${pname(4)} ${sqName(rf)} → ${sqName(rt)} (castling)`);
+    speech=`Castling. ${pname(6)} ${sqName(m.f)} to ${sqName(m.t)}, and ${pname(4)} ${sqName(rf)} to ${sqName(rt)}`;}
+  else{main=`${pname(t)} ${sqName(m.f)} → ${sqName(m.t)}`;speech=`${pname(t)} ${sqName(m.f)} to ${sqName(m.t)}`;
+    if(m.c){const cs=m.fl&F_EP?m.t-8*p.turn:m.t;sub.push(`takes ${pname(m.c)}`+(m.fl&F_EP?` on ${sqName(cs)} (en passant)`:''));speech+=`, takes ${pname(m.c)}`;}
+    if(m.p){sub.push(`becomes ${pname(m.p)}`);speech+=`, becomes ${pname(m.p)}`;}}
+  const u=make(p,m);if(inCheck(p,p.turn)){const mate=!legal(p).length;sub.push(mate?'Checkmate!':'Check!');speech+=mate?'. Checkmate!':'. Check!';}unmake(p,m,u);
+  return {main,sub:sub.join(' · '),speech,html:`<span class="pc ${col}">${GLYPH[t]}\uFE0E</span>${main}`};}
+function mt(m){return moveText(game,m).main;}
 function speak(text){
   if(!$('chkVoice').checked||!window.speechSynthesis)return;
   try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text.replace(/\b([a-h])([1-8])\b/g,'$1 $2'));u.lang='en-US';u.rate=0.95;speechSynthesis.speak(u);}catch(e){}}
@@ -389,11 +421,17 @@ function renderBoard(heat){
     if(j===0){const c=document.createElement('span');c.className='coord r';c.textContent=rank+1;d.appendChild(c);}
     d.onclick=()=>onSquareClick(s);
     el.appendChild(d);}
+  const am=pending||hintMove;
+  if(am){const pos=s=>{const f=s&7,r=s>>3;return humanColor===1?[f+.5,7-r+.5]:[7-f+.5,r+.5];};const [x1,y1]=pos(am.f),[x2,y2]=pos(am.t),col=pending?'#2e9e52':'#5a5aff';
+    const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),ex=x2-dx/L*0.32,ey=y2-dy/L*0.32;
+    el.insertAdjacentHTML('beforeend',`<svg id="arrow" viewBox="0 0 8 8"><defs><marker id="ah" markerWidth="3" markerHeight="3" refX="1.4" refY="1.5" orient="auto"><path d="M0,0 L3,1.5 L0,3 z" fill="${col}"/></marker></defs><line x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}" stroke="${col}" stroke-width="0.2" stroke-linecap="round" opacity=".85" marker-end="url(#ah)"/></svg>`);}
   let html='';hist.forEach((h,k)=>{if(k%2===0)html+=`<b>${k/2+1}.</b> `;html+=h.san+' ';});
   $('moves').innerHTML=html||'No moves yet.';$('moves').scrollTop=1e6;
   $('evalLine').textContent=lastEval;
   updateButtons();}
 function updateButtons(){
+  document.body.classList.toggle('playing',state!=='idle');
+  $('btnPhotoPlay').classList.toggle('hide',!(state!=='idle'&&mode!=='live'));
   $('btnDone').disabled=!(state==='engine'||state==='human');
   $('btnDone').textContent=state==='engine'?'✓ I made its move':'✓ My move is done';
   $('btnHint').disabled=state!=='human';
@@ -405,6 +443,8 @@ function updateButtons(){
 // ================= game flow =================
 function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});return s;}
 function gameOverCheck(){
+  const r=gameOverCheck0();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
+function gameOverCheck0(){
   const L=legal(game);
   if(!L.length){state='over';pending=null;
     if(inCheck(game,game.turn)){const won=game.turn!==humanColor;setStatus(won?'♛ Checkmate. You win, well played!':'Checkmate. The engine wins. Use Take back to try again, or start a new game.',won?'good':'bad');speak(won?'Checkmate. You win!':'Checkmate.');}
@@ -422,22 +462,25 @@ function startGame(){
   if(SF.ready)SF.w.postMessage('ucinewgame');
   if(H&&lastFeat){ref=lastFeat.slice();needResync=false;}else{ref=null;}
   setStep(4);
+  setTimeout(()=>window.scrollTo({top:0}),30);
   if(humanColor===-1)engineTurn();
-  else{state='human';setStatus(mode==='photo'?'Your move (White). Make it on the board, then take a photo.':'Your move (White). Make it on the board and take your hand away.');}
+  else{state='human';setStatus('You are White. Good luck!');yourTurnCard();}
   renderBoard();}
-function clearBig(){$('bigMove').textContent='';$('bigMoveSub').textContent='';$('cands').innerHTML='';}
+function setCard(kind,label,mainHtml,sub){const c=$('moveCard');c.className=kind;$('mcLabel').textContent=label;$('bigMove').innerHTML=mainHtml||'';$('bigMoveSub').textContent=sub||'';}
+function yourTurnCard(){const chk=inCheck(game,game.turn);setCard('you',chk?'Your turn: you are in check!':'Your turn',mode==='photo'?'Make your move':'Make your move',mode==='photo'?'then tap 📷 Take photo':mode==='live'?'then take your hand away; the camera will read it':'then tap it on the board below');}
+function clearBig(){$('cands').innerHTML='';}
 
 function commitHuman(m){
   hintMove=null;selected=-1;clearBig();
-  const s=pushMove(m);captureRef();beep(true);
+  const txt=mt(m);pushMove(m);captureRef();beep(true);
   renderBoard();
   if(gameOverCheck()){renderBoard();return;}
-  setStatus(`You played <b>${s}</b>. Engine is thinking…`,'good');
+  setStatus(`You played <b>${txt}</b>.`,'good');
   engineTurn();}
 
 function engineTurn(){
-  state='thinking';renderBoard();
-  if(!hist.length)setStatus('Engine is thinking…');
+  state='thinking';setCard('','Engine is thinking…','…','');renderBoard();
+  if(!hist.length)setStatus('You are Black. The engine moves first.');
   const elo=+$('selLevel').value,t0=Date.now();
   runEngine(game,elo,engineMovetime(elo)).then(r=>{
     if(state!=='thinking')return;
@@ -447,10 +490,11 @@ function engineTurn(){
       pending=m;state='engine';
       const mine=-r.score; // engine's score is from its own side; flip to yours
       lastEval=Math.abs(r.score)>MATE-200?(r.score>0?'Engine sees a forced mate against you.':'You have a forced mate available!'):`Evaluation (your view): ${mine>=0?'+':''}${(mine/100).toFixed(1)}`;
-      const s=san(game,m),desc=describe(game,m);
-      $('bigMove').textContent=s;$('bigMoveSub').textContent=desc;
-      setStatus(mode==='photo'?`Engine plays <b>${s}</b>. Make this move on your board, then take a photo (or press ✓).`:`Engine plays <b>${s}</b>. Please make this move on your board.`);
-      speak(desc);renderBoard();
+      const tx=moveText(game,m),s=san(game,m);
+      setCard('engine','Engine’s move: play it on your board',tx.html,(tx.sub?tx.sub+'  ·  ':'')+'('+s+')');
+      setStatus(mode==='photo'?'After moving the piece, tap 📷 Take photo (or ✓ I made its move).':mode==='live'?'Move the piece; the camera will confirm it.':'Tap ✓ I made its move when done.');
+      speak(tx.speech);renderBoard();
+      const cr=$('moveCard').getBoundingClientRect();if(cr.top<0||cr.bottom>window.innerHeight)$('moveCard').scrollIntoView({behavior:'smooth',block:'start'});
     },Math.max(0,400-(Date.now()-t0)));
   });}
 
@@ -458,8 +502,8 @@ function confirmEngine(){
   if(!pending)return;
   const m=pending;pending=null;pushMove(m);captureRef();beep(true);clearBig();
   if(gameOverCheck()){renderBoard();return;}
-  state='human';
-  setStatus((inCheck(game,game.turn)?'You are in <b>check</b>! ':'')+(mode==='photo'?'Your move. Then take a photo.':'Your move.'));
+  state='human';yourTurnCard();
+  setStatus(inCheck(game,game.turn)?'You are in <b>check</b>!':'Engine’s move confirmed.',inCheck(game,game.turn)?'bad':'good');
   renderBoard();}
 
 function onSquareClick(s){
@@ -482,14 +526,14 @@ function undo(){
   pending=null;
   while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
   if(game.turn!==humanColor){engineTurn();return;}
-  state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();
+  state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();yourTurnCard();
   setStatus('Moves taken back. Set your real board to match the screen, then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
   renderBoard();}
 
 function hint(){
   if(state!=='human')return;
   setStatus('Looking for a good move…');
-  runEngine(game,0,1500).then(r=>{if(state!=='human'||!r)return;const m=findLegal(r);if(!m)return;hintMove=m;setStatus(`Hint: consider <b>${san(game,m)}</b>.`);renderBoard(curHeat);});}
+  runEngine(game,0,1500).then(r=>{if(state!=='human'||!r)return;const m=findLegal(r);if(!m)return;hintMove=m;setStatus(`💡 Hint: <b>${mt(m)}</b>`);renderBoard(curHeat);});}
 
 // ================= camera / photo vision =================
 const video=$('video'),photo=$('photo'),overlay=$('overlay'),octx=overlay.getContext('2d');
@@ -507,6 +551,7 @@ function srcW(){return mode==='photo'?photo.naturalWidth:video.videoWidth;}
 function srcH(){return mode==='photo'?photo.naturalHeight:video.videoHeight;}
 function sourceReady(){return mode==='photo'?(photo.complete&&photo.naturalWidth>0):(mode==='live'&&video.readyState>=2&&video.videoWidth>0);}
 
+function sizeWrap(){const w=srcW(),h=srcH();if(!w||!h)return;$('videoWrap').style.maxWidth=Math.round(window.innerHeight*0.6*w/h)+'px';}
 function setMode(m){
   if(mode===m)return;
   const wasGame=state!=='idle'&&mode!=='none';
@@ -544,7 +589,7 @@ function onPhotoFile(file){
   photo.onload=()=>{
     setMode('photo');
     rebuild();photoDirty=true;photoRead=state!=='idle'&&!needResync;
-    if(corners.length<4){setStep(2);setStatus('Tap the 4 outer corners of the board on the photo: a1, h1, h8, a8.');}
+    if(corners.length<4){setStep(2);if(state!=='idle')document.body.classList.add('camOpen');setStatus('Tap the 4 outer corners of the board on the photo: a1, h1, h8, a8.');}
     else if(state==='idle'){setStep(3);setStatus('Photo loaded. Check the gold grid lines up (drag the dots if not), then press <b>Start game</b>.');}
     else if(needResync)setStatus('Photo loaded. If the board matches the screen, press <b>⟳ Re-sync board</b>.');
   };
@@ -563,6 +608,7 @@ function applyH(X,Y){const h=H,w=h[6]*X+h[7]*Y+1;return [(h[0]*X+h[1]*Y+h[2])/w,
 function rebuild(){
   H=corners.length===4?solveH([[0,0],[8,0],[8,8],[0,8]],corners):null;
   sampleIdx=null;rectIdx=null;prevFeat=null;
+  if(sourceReady())sizeWrap();
   if(!H||!sourceReady())return;
   procW=480;procH=Math.max(1,Math.round(480*srcH()/srcW()));proc.width=procW;proc.height=procH;
   const px=(x,y)=>{const xi=Math.min(procW-1,Math.max(0,Math.round(x*procW))),yi=Math.min(procH-1,Math.max(0,Math.round(y*procH)));return (yi*procW+xi)*4;};
@@ -604,20 +650,23 @@ function analyse(force,fromPhoto){
     const res=L.map(m=>scoreMove(d,m,game.turn)).sort((a,b)=>b.score-a.score);
     const uniq=[];for(const r of res)if(!uniq.some(u=>u.m.f===r.m.f&&u.m.t===r.m.t))uniq.push(r);
     const b=uniq[0];
-    if(b&&b.minS>T&&b.score>T*0.5){choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+    // a clean read: the move's squares changed clearly AND nothing else did (no hand/shadow left on the board)
+    const clean=b&&b.minS>T&&b.score>T*0.5&&(b.maxOut<T*0.6||force||fromPhoto);
+    if(b&&b.minS>T&&b.score>T*0.5&&!clean)return; // probably a hand still near the board: wait for the next still moment
+    if(clean){choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
     const opts=uniq.filter(r=>r.minS>T*0.5).slice(0,3);
     const box=$('cands');box.innerHTML='';
     if(opts.length){
       setStatus('I’m not sure which move you made. Tap it below, or tap it on the board.','bad');
-      opts.forEach(r=>{const bt=document.createElement('button');bt.textContent=san(game,r.m);bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
+      opts.forEach(r=>{const bt=document.createElement('button');bt.textContent=mt(r.m);bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
       beep(false);
     }else if(force||fromPhoto||maxD>T*1.5){setStatus('That doesn’t look like a legal move from this position. Check your board matches the screen, or tap your move on the screen board.','bad');beep(false);}
   }else if(state==='engine'&&pending){
     if(force){confirmEngine();return;}
-    if(maxD<T){if(fromPhoto)setStatus(`No change seen yet. Play <b>${san(game,pending)}</b> on your board, then take a photo.`,'bad');return;}
+    if(maxD<T){if(fromPhoto)setStatus(`No change seen yet. Play <b>${mt(pending)}</b> on your board, then take a photo.`,'bad');return;}
     const r=scoreMove(d,pending,game.turn);
-    if(r.minS>T*0.8&&r.score>T*0.3){confirmEngine();return;}
-    setStatus(`That doesn’t look like <b>${san(game,pending)}</b> yet. Please make exactly that move, or press <b>✓ I made its move</b>.`,'bad');beep(false);}
+    if(r.minS>T*0.8&&r.score>T*0.3){if(r.maxOut<T*0.6||fromPhoto){confirmEngine();return;}if(!fromPhoto)return;}
+    setStatus(`That doesn’t look like <b>${mt(pending)}</b> yet. Please make exactly that move, or press <b>✓ I made its move</b>.`,'bad');beep(false);}
 }
 
 function drawPoly(f,r,fill,stroke){
@@ -654,6 +703,7 @@ function updateHeat(){if(ref&&lastFeat&&!needResync){const d=adjDiff(lastFeat,re
 let renderTick=0;
 function tick(){
   try{
+    if(mode==='live'&&video.paused&&stream)video.play().catch(()=>{});
     if(H&&sourceReady()&&!sampleIdx)rebuild();
     if(mode==='live'&&sampleIdx&&sourceReady()){
       const data=grab(),feat=extract(data);
@@ -689,6 +739,10 @@ overlay.addEventListener('pointerup',()=>{if(dragging<0)return;dragging=-1;saveC
   if(mode==='live'&&state!=='idle'&&!needResync)captureNext=true;});
 
 // ================= buttons =================
+$('camPanel').addEventListener('click',()=>{if(document.body.classList.contains('playing')&&!document.body.classList.contains('camOpen')){document.body.classList.add('camOpen');setTimeout(()=>{sizeWrap();drawOverlay();},50);}});
+$('camClose').onclick=e=>{e.stopPropagation();document.body.classList.remove('camOpen');window.scrollTo(0,0);};
+$('selNames').onchange=()=>{if(state==='human')yourTurnCard();try{localStorage.setItem('ccc_names',$('selNames').value);}catch(e){}};
+try{const n=localStorage.getItem('ccc_names');if(n)$('selNames').value=n;}catch(e){}
 $('btnCam').onclick=()=>startCamera($('camSel').value||undefined);
 $('camSel').onchange=()=>startCamera($('camSel').value);
 $('photoCap').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
@@ -698,17 +752,18 @@ $('btnCorners').onclick=()=>{corners=[];H=null;sampleIdx=null;setStep(2);setStat
 $('btnStart').onclick=()=>{speak(' ');beep(true);startGame();};
 $('btnDone').onclick=()=>{if(state==='engine')confirmEngine();else if(state==='human')analyse(true,false);};
 $('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
-  setStatus(state==='engine'&&pending?`Synced. Now play the engine’s move <b>${san(game,pending)}</b>.`:'Board re-synced. Your move.','good');renderBoard();};
+  setStatus(state==='engine'&&pending?`Synced. Now play the engine’s move <b>${mt(pending)}</b>.`:'Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
 $('btnHint').onclick=hint;
 $('btnNew').onclick=()=>{state='idle';pending=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
   setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
 $('selColor').onchange=()=>{if(state==='idle'){humanColor=+$('selColor').value;rebuild();renderBoard();}};
-window.addEventListener('resize',drawOverlay);
+window.addEventListener('resize',()=>{sizeWrap();drawOverlay();});
+video.addEventListener('loadedmetadata',sizeWrap);
 
 renderBoard();tick();
 // for automated testing only
-window.__ccc={get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get pending(){return pending&&{f:pending.f,t:pending.t,p:pending.p}},get engineReady(){return SF.ready},
+window.__ccc={diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get pending(){return pending&&{f:pending.f,t:pending.t,p:pending.p}},get engineReady(){return SF.ready},
   board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
   legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
 })();
