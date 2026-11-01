@@ -85,7 +85,7 @@ function show(v){
   $('viewPlay').classList.toggle('hide',v!=='play');
   ['two','learn','hist'].forEach(x=>$('view'+x[0].toUpperCase()+x.slice(1)).classList.toggle('hide',v!==x));
   document.body.classList.toggle('otherview',v!=='play');
-  if(v==='two')Two.render();if(v==='learn')Learn.home();if(v==='hist')Hist.list();
+  if(v==='two')Two.render();if(v==='learn')Learn.home();if(v==='hist'){Hist.sel=null;Hist.list();}
   window.scrollTo({top:0});}
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 const st=document.createElement('style');st.textContent='body.otherview #camPanel{display:none!important}';document.head.appendChild(st);
@@ -148,17 +148,35 @@ const Two={g:null,pos:null,view:'setup',
 };
 
 // ================= HISTORY =================
-const Hist={
+const Hist={sel:null, // null = normal view; Set of ids = select mode
   list(){
-    const all=CCX.games();
+    const all=CCX.games(),sel=this.sel;
+    if(sel)for(const id of [...sel])if(!all.some(g=>g.id===id))sel.delete(id);
+    const n=sel?sel.size:0,allOn=sel&&all.length&&n===all.length;
     $('viewHist').innerHTML=`<div class="card"><h2>Game history</h2>
-      ${all.length?`<p class="muted small">${all.length} saved game${all.length>1?'s':''} on this device. Tap a game to replay it.</p>`:'<p class="muted">No games yet. Games against the engine and two-player games are saved here automatically.</p>'}
-      ${all.map(g=>`<div class="list-item" data-g="${g.id}"><div><b>${esc(g.white)}</b> vs <b>${esc(g.black)}</b>
+      ${all.length?`<p class="muted small">${all.length} saved game${all.length>1?'s':''} on this device. ${sel?'Tap games to select them.':'Tap a game to replay it.'}</p>`:'<p class="muted">No games yet. Games against the engine and two-player games are saved here automatically.</p>'}
+      ${all.length?(sel?`<div class="row" style="margin:0 0 10px;justify-content:space-between">
+          <label style="font-size:15px;color:var(--text)"><input type="checkbox" id="hSelAll" ${allOn?'checked':''} style="width:20px;height:20px"> Select all</label>
+          <span><button id="hDelSel" class="${n?'primary':''}" ${n?'':'disabled'}>🗑 Delete selected (${n})</button> <button id="hSelDone">Cancel</button></span></div>`
+        :`<div class="row" style="margin:0 0 10px"><button id="hSelect">☑ Select / delete</button><button id="hAll">📋 Copy all games (PGN)</button></div>`):''}
+      ${all.map(g=>`<div class="list-item${sel&&sel.has(g.id)?' picked':''}" data-g="${g.id}">
+        ${sel?`<input type="checkbox" ${sel.has(g.id)?'checked':''} style="width:20px;height:20px;flex:none;pointer-events:none">`:''}
+        <div style="flex:1"><b>${esc(g.white)}</b> vs <b>${esc(g.black)}</b>
         <div class="small muted">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':'two players'} · ${g.moves.length} moves</div></div>
-        <span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span></div>`).join('')}
-      ${all.length?'<div class="row"><button id="hAll">📋 Copy all games (PGN)</button></div>':''}</div>`;
-    document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>this.open(el.dataset.g));
-    if(all.length)$('hAll').onclick=e=>copyText(all.map(pgnOf).join('\n'),e.target);},
+        <span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span></div>`).join('')}</div>`;
+    document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{
+      if(!this.sel)return this.open(el.dataset.g);
+      const id=el.dataset.g;if(this.sel.has(id))this.sel.delete(id);else this.sel.add(id);this.list();});
+    if(!all.length)return;
+    if(sel){
+      $('hSelAll').onchange=e=>{this.sel=new Set(e.target.checked?all.map(g=>g.id):[]);this.list();};
+      $('hSelDone').onclick=()=>{this.sel=null;this.list();};
+      $('hDelSel').onclick=e=>{const b=e.target;if(!this.sel.size)return;
+        if(!b.dataset.sure){b.dataset.sure=1;b.textContent=`Tap again to delete ${this.sel.size} game${this.sel.size>1?'s':''}`;b.classList.add('primary');return;}
+        const ids=this.sel;LS.set('ccc_games',CCX.games().filter(g=>!ids.has(g.id)));this.sel=null;this.list();};
+    }else{
+      $('hSelect').onclick=()=>{this.sel=new Set();this.list();};
+      $('hAll').onclick=e=>copyText(all.map(pgnOf).join('\n'),e.target);}},
   open(id){
     const g=CCX.games().find(x=>x.id===id);if(!g)return this.list();
     const ps=[startPos()],ms=[];for(const u of g.uci){const p=clonePos(ps[ps.length-1]),m=findUci(p,u);if(!m)break;make(p,m);ps.push(p);ms.push(m);}

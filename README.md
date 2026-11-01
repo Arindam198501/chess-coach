@@ -79,7 +79,7 @@ Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last
   - **Checkmate in 1, 2 and 3:** classic mating patterns, then puzzle sets.
 
   Every puzzle answer was verified with Stockfish 19. If you find a different move that also works, the app asks Stockfish and accepts it. Progress is saved on your device.
-- **📜 History:** every game (vs the engine and two-player) is saved automatically, with names, date and result. Tap a game to replay it move by move, copy it as PGN, or continue an unfinished two-player game.
+- **📜 History:** every game (vs the engine and two-player) is saved automatically, with names, date and result. Tap a game to replay it move by move, copy it as PGN, or continue an unfinished two-player game. Tap **☑ Select / delete** to tick individual games or **Select all**, then delete them. Deleting asks for a second tap to confirm.
 
 ## If the camera doesn't read your moves
 
