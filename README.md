@@ -68,7 +68,24 @@ Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last
 - Steep camera angles, moving shadows or a bumped camera cause misreads. Re-mark the corners and press Re-sync.
 - **Change threshold** slider: move it lower if moves are missed, higher if it reacts to shadows.
 
+## Other tabs
+
+- **👥 2 Players:** two people play on one screen (pass-and-play). Both players enter their names first. You can undo, offer a draw or resign, and optionally turn the board around after every move.
+- **📚 Learn:** courses for stronger players:
+  - **Openings repertoire:** Ruy Lopez, Italian, Najdorf, QGD, King's Indian, Caro-Kann and London. Each has an explained main line, then a drill where you play your side from memory.
+  - **Middlegame strategy:** outposts, open files and the 7th rank, good and bad bishops, isolated queen's pawn, and the Greek gift sacrifice.
+  - **Tactics & calculation:** forks, skewers and discovered checks, then calculation sets taken from real engine games.
+  - **Endgames:** opposition, the rule of the square, Lucena and Philidor.
+  - **Checkmate in 1, 2 and 3:** classic mating patterns, then puzzle sets.
+
+  Every puzzle answer was verified with Stockfish 19. If you find a different move that also works, the app asks Stockfish and accepts it. Progress is saved on your device.
+- **📜 History:** every game (vs the engine and two-player) is saved automatically, with names, date and result. Tap a game to replay it move by move, copy it as PGN, or continue an unfinished two-player game.
+
+## If the camera doesn't read your moves
+
+During a game, the line above the move card shows what the camera is doing ("Watching…", "Movement seen…", "reading…"). If a move isn't recognised, tap **📸 Save snapshot**. It saves an image of what the camera compared, which you can send for diagnosis.
+
 ## Coming next
 
 - **Stage 2:** warnings right after inaccuracies, mistakes and blunders (with a take-back option), and a full review after each game.
-- **Stage 3:** saved mistake history, puzzles built from your mistakes, opening drills, tactics puzzles and a stats dashboard.
+- **Stage 3:** saved mistake history, puzzles built from your mistakes, and a stats dashboard.

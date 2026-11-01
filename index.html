@@ -100,6 +100,32 @@
   details summary{cursor:pointer;color:var(--text)}
   .eval{font-size:12.5px;color:var(--muted);text-align:center;margin-top:6px;min-height:18px}
   .hide{display:none!important}
+  #tabs{display:flex;gap:6px;padding:8px 12px 0;max-width:1400px;margin:0 auto;overflow-x:auto}
+  #tabs button{border-radius:10px 10px 0 0;border-bottom:none;white-space:nowrap;padding:9px 12px}
+  @media (max-width:420px){#tabs{gap:3px;padding:8px 6px 0}#tabs button{padding:8px 8px;font-size:14px}}
+  #tabs button.on{background:var(--panel);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .view{max-width:760px;margin:0 auto;padding:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .cboard{display:grid;grid-template-columns:repeat(8,1fr);width:100%;max-width:440px;aspect-ratio:1;margin:12px auto 0;border:3px solid #3b2f22;border-radius:4px;user-select:none;position:relative}
+  .muted{color:var(--muted)} .small{font-size:13px}
+  input.txt{background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:9px 10px;font:inherit;width:100%}
+  .list-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;background:#20242b}
+  .list-item:hover{border-color:var(--accent)}
+  .pill{font-size:12px;padding:2px 8px;border-radius:20px;background:#2a2e36;color:var(--muted);white-space:nowrap}
+  .pill.done{background:#1f3a28;color:var(--good)}
+  .lesson-text{font-size:15.5px;line-height:1.55;margin-top:12px;background:#20242b;border-radius:10px;padding:12px 14px}
+  .lesson-text b{color:var(--accent)}
+  .fb{margin-top:10px;font-weight:600;min-height:22px;text-align:center}
+  .fb.good{color:var(--good)} .fb.bad{color:var(--bad)}
+  .mlist{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;line-height:1.9;margin-top:10px}
+  .mlist span{padding:1px 4px;border-radius:4px;cursor:pointer} .mlist span.cur{background:var(--accent);color:#1b1b1b}
+  .players{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:16px}
+  .players .on{color:var(--accent)}
+  .mcard{text-align:center;border-radius:12px;padding:12px 10px;margin-top:10px;background:#262a31;border:2px solid #3a3f49}
+  .mcard.you{border-color:var(--accent)} .mcard.over{border-color:var(--bad)}
+  .mcLabel{font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .mcMain{font-size:clamp(22px,7vw,32px);font-weight:800;margin-top:4px} .mcMain .pc{margin-right:6px}
+  .mcSub{color:var(--muted);font-size:14px;min-height:18px}
 </style>
 </head>
 <body>
@@ -109,7 +135,10 @@
   <span id="engineName">Engine: loading…</span>
 </header>
 
-<main>
+<nav id="tabs">
+  <button data-v="play" class="on">♞ Play</button><button data-v="two">👥 2 Players</button><button data-v="learn">📚 Learn</button><button data-v="hist">📜 History</button>
+</nav>
+<main id="viewPlay">
   <section id="camPanel">
     <div id="camTop"><h2>Camera</h2><button id="camClose">✕ Back to game</button></div>
     <div id="camMsg">Press “Start live camera”, or take a photo of the board.</div>
@@ -172,6 +201,7 @@
         <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
         <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
       </select></label>
+      <label>Your name <input id="yourName" placeholder="You" maxlength="24" style="width:110px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px 9px;font:inherit"></label>
       <label>Names <select id="selNames"><option value="indian" selected>Elephant · Camel · Horse</option><option value="intl">Rook · Bishop · Knight</option></select></label>
       <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
     </div>
@@ -189,6 +219,9 @@
     </details>
   </section>
 </main>
+<section id="viewTwo" class="view hide"></section>
+<section id="viewLearn" class="view hide"></section>
+<section id="viewHist" class="view hide"></section>
 
 <div id="modal"><div class="box"><b>Promote to:</b><div id="promoBtns"></div></div></div>
 
@@ -445,22 +478,31 @@ function updateButtons(){
   $('btnReread').classList.toggle('hide',!(mode==='photo'&&H&&state!=='idle'));}
 
 // ================= game flow =================
-function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});return s;}
+function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});saveGame();return s;}
+let gameId=null,gameResult='*',gameDate=null;
+function yourName(){return ($('yourName').value||'').trim()||'You';}
+function saveGame(){
+  if(!window.CCX||!gameId||!hist.length)return;
+  const eng='Stockfish '+($('selLevel').value==='0'?'(full)':'~'+$('selLevel').value),me=yourName();
+  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,
+    moves:hist.map(h=>h.san),uci:hist.map(h=>FILES[h.m.f&7]+((h.m.f>>3)+1)+FILES[h.m.t&7]+((h.m.t>>3)+1)+(h.m.p?' pnbrq'[h.m.p]:''))});}
 function gameOverCheck(){
   const r=gameOverCheck0();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
 function gameOverCheck0(){
   const L=legal(game);
   if(!L.length){state='over';removeSq=-1;
+    gameResult=inCheck(game,game.turn)?(game.turn===1?'0-1':'1-0'):'1/2-1/2';saveGame();
     if(inCheck(game,game.turn)){const won=game.turn!==humanColor;setStatus(won?'♛ Checkmate. You win, well played!':'Checkmate. The engine wins. Use Take back to try again, or start a new game.',won?'good':'bad');speak(won?'Checkmate. You win!':'Checkmate.');}
     else{setStatus('Stalemate. It’s a draw.');speak('Stalemate. Draw.');}
     return true;}
-  if(game.half>=100){state='over';setStatus('Draw by the 50-move rule.');return true;}
+  if(game.half>=100){state='over';gameResult='1/2-1/2';saveGame();setStatus('Draw by the 50-move rule.');return true;}
   const pcs=[];for(const x of game.b)if(x&&Math.abs(x)!==6)pcs.push(Math.abs(x));
-  if(pcs.length===0||(pcs.length===1&&(pcs[0]===2||pcs[0]===3))){state='over';setStatus('Draw: not enough material to checkmate.');return true;}
+  if(pcs.length===0||(pcs.length===1&&(pcs[0]===2||pcs[0]===3))){state='over';gameResult='1/2-1/2';saveGame();setStatus('Draw: not enough material to checkmate.');return true;}
   return false;}
 
 function startGame(){
   game=startPos();hist=[];removeSq=-1;lastEngine=null;selected=-1;hintMove=null;lastEval='';
+  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();
   humanColor=+$('selColor').value;rebuild();
   clearBig();
   if(SF.ready)SF.w.postMessage('ucinewgame');
@@ -538,6 +580,7 @@ function undo(){
   if(!hist.length||state==='thinking')return;
   removeSq=-1;lastEngine=null;lastEngineTx=null;
   while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
+  gameResult='*';saveGame();
   if(game.turn!==humanColor){engineTurn();return;}
   state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();yourTurnCard();
   setStatus('Moves taken back. Undo your last move on the real board (and put back any piece you removed), then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
@@ -838,6 +881,8 @@ $('camPanel').addEventListener('click',()=>{if(document.body.classList.contains(
 $('camClose').onclick=e=>{e.stopPropagation();document.body.classList.remove('camOpen');window.scrollTo(0,0);};
 $('selNames').onchange=()=>{if(state==='human')yourTurnCard();try{localStorage.setItem('ccc_names',$('selNames').value);}catch(e){}};
 try{const n=localStorage.getItem('ccc_names');if(n)$('selNames').value=n;}catch(e){}
+try{$('yourName').value=localStorage.getItem('ccc_yourname')||'';}catch(e){}
+$('yourName').onchange=()=>{try{localStorage.setItem('ccc_yourname',$('yourName').value.trim());}catch(e){}};
 $('btnCam').onclick=()=>startCamera($('camSel').value||undefined);
 $('camSel').onchange=()=>startCamera($('camSel').value);
 $('photoCap').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
@@ -859,11 +904,15 @@ window.addEventListener('resize',()=>{sizeWrap();drawOverlay();});
 video.addEventListener('loadedmetadata',sizeWrap);
 
 renderBoard();tick();
+// shared with extras.js (Two players / Learn / History tabs)
+window.CCApp={san,moveText,pname,SF,toFen,sqName,speak,beep,GLYPH};
 // for automated testing only
 window.__ccc={diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
   board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
   legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
 })();
 </script>
+<script src="courses.js"></script>
+<script src="extras.js"></script>
 </body>
 </html>
