@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14161a">
+<title>Chess Cam Coach</title>
+<style>
+  :root{--bg:#14161a;--panel:#1d2026;--line:#2c3038;--text:#e8e6e1;--muted:#9a9ea8;--accent:#e2b450;--good:#5fbf7a;--bad:#e06c5f;--light:#ecd9b5;--dark:#b0835a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  header h1{font-size:19px;margin:0;letter-spacing:.3px}
+  header span{color:var(--muted);font-size:13px}
+  #engineName{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  main{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;padding:16px;max-width:1400px;margin:0 auto}
+  @media (max-width:900px){main{grid-template-columns:1fr;padding:10px;gap:10px}}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 10px}
+  #videoWrap{position:relative;background:#000;border-radius:8px;overflow:hidden;min-height:180px}
+  #video,#photo{display:block;width:100%;height:auto}
+  #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  #camMsg{position:absolute;left:0;right:0;top:0;padding:10px 12px;background:rgba(0,0,0,.7);font-size:14px;pointer-events:none}
+  #camMsg:empty{display:none}
+  #modeTag{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.65);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  button,select,.btn{background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer;display:inline-block}
+  button:hover:not(:disabled),.btn:hover{border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary,.btn.primary{background:var(--accent);color:#1b1b1b;border-color:var(--accent);font-weight:600}
+  button.big{font-size:17px;padding:12px 18px}
+  label{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px}
+  input[type=range]{width:110px}
+  input[type=file]{display:none}
+  .steps{margin:10px 0 0;padding-left:20px;color:var(--muted);font-size:13.5px}
+  .steps li{margin:3px 0}
+  .steps li.done{color:var(--good)}
+  .steps li.now{color:var(--text);font-weight:600}
+  #rectWrap{display:flex;gap:12px;align-items:flex-start;margin-top:10px}
+  #rect{width:150px;height:150px;border-radius:6px;background:#000;flex:none}
+  #rectNote{font-size:12.5px;color:var(--muted)}
+  #status{font-size:16px;padding:10px 12px;border-radius:8px;background:#262a31;border-left:4px solid var(--accent);min-height:44px}
+  #status.good{border-left-color:var(--good)} #status.bad{border-left-color:var(--bad)}
+  #bigMove{font-size:32px;font-weight:700;text-align:center;margin:10px 0 2px;color:var(--accent)}
+  #bigMove:empty{display:none}
+  #bigMoveSub{text-align:center;color:var(--muted);font-size:14px}
+  #cands{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;justify-content:center}
+  #cands:empty{display:none}
+  #board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;max-width:440px;aspect-ratio:1;margin:12px auto 0;border:3px solid #3b2f22;border-radius:4px;user-select:none}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;font-size:clamp(22px,8vw,44px);cursor:pointer;line-height:1}
+  @media (min-width:900px){.sq{font-size:40px}}
+  .sq.l{background:var(--light)} .sq.d{background:var(--dark)}
+  .sq.last::after{content:"";position:absolute;inset:0;background:rgba(240,215,60,.38)}
+  .sq.sel::after{content:"";position:absolute;inset:0;background:rgba(80,160,255,.45)}
+  .sq.todo::after{content:"";position:absolute;inset:0;background:rgba(80,200,110,.55);animation:pulse 1s infinite alternate}
+  .sq.hint::after{content:"";position:absolute;inset:0;background:rgba(120,120,255,.5)}
+  .sq.dot::before{content:"";position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(0,0,0,.22);z-index:2}
+  .sq .heat{position:absolute;inset:0;background:rgb(255,40,40);pointer-events:none}
+  @keyframes pulse{from{opacity:.35}to{opacity:1}}
+  .pc{position:relative;z-index:3}
+  .pc.w{color:#fff;text-shadow:0 0 2px #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000}
+  .pc.b{color:#161616;text-shadow:0 0 1px #fff8}
+  .coord{position:absolute;font-size:10px;font-weight:700;opacity:.7;z-index:4}
+  .coord.f{right:3px;bottom:1px} .coord.r{left:3px;top:1px}
+  .sq.l .coord{color:var(--dark)} .sq.d .coord{color:var(--light)}
+  #moves{margin-top:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;color:var(--muted);max-height:120px;overflow:auto;line-height:1.7}
+  #moves b{color:var(--text);font-weight:600}
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  #modal.show{display:flex}
+  #modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center}
+  #modal .box div{display:flex;gap:10px;margin-top:12px;justify-content:center}
+  #modal button{font-size:34px;width:64px;height:64px;padding:0}
+  details{margin-top:12px;color:var(--muted);font-size:13.5px}
+  details summary{cursor:pointer;color:var(--text)}
+  .eval{font-size:12.5px;color:var(--muted);text-align:center;margin-top:6px;min-height:18px}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>♞ Chess Cam Coach</h1>
+  <span>Play on your real board. The camera reads your moves; the engine tells you its reply.</span>
+  <span id="engineName">Engine: loading…</span>
+</header>
+
+<main>
+  <section id="camPanel">
+    <h2>Camera</h2>
+    <div id="videoWrap">
+      <video id="video" playsinline muted autoplay></video>
+      <img id="photo" class="hide" alt="Board photo">
+      <canvas id="overlay"></canvas>
+      <div id="camMsg">Press “Start live camera”, or take a photo of the board.</div>
+      <div id="modeTag" class="hide"></div>
+    </div>
+    <div class="row">
+      <button id="btnCam" class="primary">Start live camera</button>
+      <label class="btn" for="photoCap">📷 Take photo</label><input type="file" id="photoCap" accept="image/*" capture="environment">
+      <label class="btn" for="photoUp">🖼 Upload image</label><input type="file" id="photoUp" accept="image/*">
+      <select id="camSel" class="hide"></select>
+      <button id="btnCorners" disabled>Re-mark corners</button>
+      <button id="btnReread" class="hide">Re-read photo</button>
+    </div>
+    <ol class="steps">
+      <li id="st1" class="now">Put the phone/webcam <b>directly above</b> the board, with the whole board in view.</li>
+      <li id="st2">Tap the 4 <b>outer corners</b> of the board in order: <b>a1 → h1 → h8 → a8</b> (a1 = White’s bottom-left). Drag a dot to adjust.</li>
+      <li id="st3">Set up the starting position, choose your colour and level, then press <b>Start game</b>.</li>
+    </ol>
+    <div id="rectWrap">
+      <canvas id="rect" width="150" height="150"></canvas>
+      <div id="rectNote">Top-down view of what the camera sees. If the gold grid lines up with the squares, calibration is good. Red tint shows squares that changed since the last confirmed position.</div>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="chkAuto" checked> Auto-detect moves</label>
+      <label title="Lower = more sensitive">Change threshold <input type="range" id="sens" min="6" max="40" value="16"></label>
+      <label><input type="checkbox" id="chkHeat" checked> Show changes</label>
+    </div>
+  </section>
+
+  <section id="gamePanel">
+    <h2>Game</h2>
+    <div id="status">Start the live camera (or take a photo) and mark the board corners. You can also play without a camera by tapping moves on the board below.</div>
+    <div id="bigMove"></div>
+    <div id="bigMoveSub"></div>
+    <div id="cands"></div>
+    <div class="row" style="justify-content:center">
+      <button id="btnStart" class="primary big">Start game</button>
+      <button id="btnDone" class="big" disabled>✓ My move is done</button>
+    </div>
+    <div id="board"></div>
+    <div class="eval" id="evalLine"></div>
+    <div class="row" style="justify-content:center">
+      <button id="btnHint" disabled>💡 Hint</button>
+      <button id="btnUndo" disabled>↶ Take back</button>
+      <button id="btnSync" disabled title="Use when the real board matches the screen but the app is confused">⟳ Re-sync board</button>
+      <button id="btnNew">New game</button>
+    </div>
+    <div class="row" style="justify-content:center">
+      <label>I play <select id="selColor"><option value="1">White</option><option value="-1">Black</option></select></label>
+      <label>Engine <select id="selLevel">
+        <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
+        <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
+      </select></label>
+      <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
+    </div>
+    <div id="moves"></div>
+    <details>
+      <summary>Tips for reliable detection</summary>
+      <ul>
+        <li>Mount the camera looking straight down (a phone stand, tripod or lamp arm). Steep angles let tall pieces hide neighbouring squares.</li>
+        <li>Use even light and avoid moving shadows. Keep the camera and board still for the whole game.</li>
+        <li>Live camera: after moving, take your hand away. The app reads the board once nothing has moved for about a second.</li>
+        <li>Photo mode: after each move, press <b>Take photo</b>. If the phone moved, drag the corner dots onto the board corners and press <b>Re-read photo</b>.</li>
+        <li>If a move is misread, tap a suggestion or tap the correct move on the screen board. Use <b>Re-sync board</b> when the real board matches the screen but the app is confused.</li>
+        <li>The engine’s move is spoken, shown in large text and highlighted in green on the screen and the camera view. Play it on your board and the app confirms it, or press <b>✓ I made its move</b>.</li>
+      </ul>
+    </details>
+  </section>
+</main>
+
+<div id="modal"><div class="box"><b>Promote to:</b><div id="promoBtns"></div></div></div>
+
+<!-- Chess rules + small backup engine (used for move legality, and as a fallback if Stockfish can't load) -->
+<script id="core">
+var F_EP=1,F_CASTLE=2,F_DOUBLE=4,MATE=100000,INF=1e9;
+var VAL=[0,100,320,330,500,900,0];
+var DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+var KN=[],KG=[],RAY=[];
+(function(){for(var s=0;s<64;s++){var f=s&7,r=s>>3;KN[s]=[];KG[s]=[];RAY[s]=[];
+  [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]].forEach(function(d){var nf=f+d[0],nr=r+d[1];if(nf>=0&&nf<8&&nr>=0&&nr<8)KN[s].push(nr*8+nf);});
+  DIRS.forEach(function(d){var nf=f+d[0],nr=r+d[1];if(nf>=0&&nf<8&&nr>=0&&nr<8)KG[s].push(nr*8+nf);var ray=[];while(nf>=0&&nf<8&&nr>=0&&nr<8){ray.push(nr*8+nf);nf+=d[0];nr+=d[1];}RAY[s].push(ray);});
+}})();
+var CR=[];for(var i0=0;i0<64;i0++)CR[i0]=15;CR[0]=13;CR[4]=12;CR[7]=14;CR[56]=7;CR[60]=3;CR[63]=11;
+// piece-square tables, written with rank 8 at the top (white's perspective)
+var PST=[null,
+ [0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
+ [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+ [-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
+ [0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
+ [-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20]];
+var KMID=[-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20];
+var KEND=[-50,-40,-30,-20,-20,-30,-40,-50,-30,-20,-10,0,0,-10,-20,-30,-30,-10,20,30,30,20,-10,-30,-30,-10,30,40,40,30,-10,-30,-30,-10,30,40,40,30,-10,-30,-30,-10,20,30,30,20,-10,-30,-30,-30,0,0,0,0,-30,-30,-50,-30,-30,-30,-30,-30,-30,-50];
+
+function startPos(){var b=new Int8Array(64),back=[4,2,3,5,6,3,2,4];for(var f=0;f<8;f++){b[f]=back[f];b[8+f]=1;b[48+f]=-1;b[56+f]=-back[f];}return {b:b,turn:1,castle:15,ep:-1,half:0};}
+function clonePos(p){return {b:Int8Array.from(p.b),turn:p.turn,castle:p.castle,ep:p.ep,half:p.half};}
+function attacked(p,sq,by){var b=p.b,f=sq&7,i,t,ray,x;
+  if(by===1){if(f>0&&sq-9>=0&&b[sq-9]===1)return true;if(f<7&&sq-7>=0&&b[sq-7]===1)return true;}
+  else{if(f<7&&sq+9<64&&b[sq+9]===-1)return true;if(f>0&&sq+7<64&&b[sq+7]===-1)return true;}
+  var n=2*by,k=6*by,r=4*by,q=5*by,bi=3*by;
+  t=KN[sq];for(i=0;i<t.length;i++)if(b[t[i]]===n)return true;
+  t=KG[sq];for(i=0;i<t.length;i++)if(b[t[i]]===k)return true;
+  for(var d=0;d<8;d++){ray=RAY[sq][d];for(i=0;i<ray.length;i++){x=b[ray[i]];if(x!==0){if(x===q||(d<4?x===r:x===bi))return true;break;}}}
+  return false;}
+function inCheck(p,c){var k=p.b.indexOf(6*c);return k>=0&&attacked(p,k,-c);}
+function addP(out,f,t,cap,caps){var ps=caps?[5]:[5,2,4,3];for(var i=0;i<ps.length;i++)out.push({f:f,t:t,p:ps[i],fl:0,c:cap,pt:1});}
+function gen(p,caps){var out=[],b=p.b,c=p.turn,s,pc,t,i,to,x,d;
+  for(s=0;s<64;s++){pc=b[s];if(pc===0||(pc>0)!==(c>0))continue;t=pc*c;
+    if(t===1){var dir=8*c,r=s>>3,f=s&7,startR=c===1?1:6,promR=c===1?7:0,one=s+dir;
+      if(b[one]===0){if((one>>3)===promR)addP(out,s,one,0,caps);else if(!caps){out.push({f:s,t:one,p:0,fl:0,c:0,pt:1});if(r===startR&&b[one+dir]===0)out.push({f:s,t:one+dir,p:0,fl:F_DOUBLE,c:0,pt:1});}}
+      for(var df=-1;df<=1;df+=2){var nf=f+df;if(nf<0||nf>7)continue;to=one+df;x=b[to];
+        if(x!==0&&(x>0)!==(c>0)){if((to>>3)===promR)addP(out,s,to,Math.abs(x),false);else out.push({f:s,t:to,p:0,fl:0,c:Math.abs(x),pt:1});}
+        else if(x===0&&to===p.ep)out.push({f:s,t:to,p:0,fl:F_EP,c:1,pt:1});}
+    }else if(t===2||t===6){var tg=t===2?KN[s]:KG[s];
+      for(i=0;i<tg.length;i++){to=tg[i];x=b[to];if(x===0){if(!caps)out.push({f:s,t:to,p:0,fl:0,c:0,pt:t});}else if((x>0)!==(c>0))out.push({f:s,t:to,p:0,fl:0,c:Math.abs(x),pt:t});}
+      if(t===6&&!caps){
+        if(c===1&&s===4){
+          if((p.castle&1)&&b[5]===0&&b[6]===0&&b[7]===4&&!attacked(p,4,-1)&&!attacked(p,5,-1)&&!attacked(p,6,-1))out.push({f:4,t:6,p:0,fl:F_CASTLE,c:0,pt:6});
+          if((p.castle&2)&&b[3]===0&&b[2]===0&&b[1]===0&&b[0]===4&&!attacked(p,4,-1)&&!attacked(p,3,-1)&&!attacked(p,2,-1))out.push({f:4,t:2,p:0,fl:F_CASTLE,c:0,pt:6});
+        }else if(c===-1&&s===60){
+          if((p.castle&4)&&b[61]===0&&b[62]===0&&b[63]===-4&&!attacked(p,60,1)&&!attacked(p,61,1)&&!attacked(p,62,1))out.push({f:60,t:62,p:0,fl:F_CASTLE,c:0,pt:6});
+          if((p.castle&8)&&b[59]===0&&b[58]===0&&b[57]===0&&b[56]===-4&&!attacked(p,60,1)&&!attacked(p,59,1)&&!attacked(p,58,1))out.push({f:60,t:58,p:0,fl:F_CASTLE,c:0,pt:6});
+        }}
+    }else{var d0=t===3?4:0,d1=t===4?4:8;
+      for(d=d0;d<d1;d++){var ray=RAY[s][d];for(i=0;i<ray.length;i++){to=ray[i];x=b[to];
+        if(x===0){if(!caps)out.push({f:s,t:to,p:0,fl:0,c:0,pt:t});}else{if((x>0)!==(c>0))out.push({f:s,t:to,p:0,fl:0,c:Math.abs(x),pt:t});break;}}}
+    }}
+  return out;}
+function make(p,m){var b=p.b,pc=b[m.f],u={cap:b[m.t],castle:p.castle,ep:p.ep,half:p.half};
+  b[m.t]=pc;b[m.f]=0;
+  if(m.fl&F_EP){var cs=m.t-8*p.turn;u.cap=b[cs];b[cs]=0;}
+  if(m.p)b[m.t]=m.p*p.turn;
+  if(m.fl&F_CASTLE){if(m.t===6){b[5]=b[7];b[7]=0;}else if(m.t===2){b[3]=b[0];b[0]=0;}else if(m.t===62){b[61]=b[63];b[63]=0;}else if(m.t===58){b[59]=b[56];b[56]=0;}}
+  p.ep=(m.fl&F_DOUBLE)?(m.f+m.t)/2:-1;
+  p.castle&=CR[m.f]&CR[m.t];
+  p.half=(pc===1||pc===-1||u.cap)?0:p.half+1;
+  p.turn=-p.turn;return u;}
+function unmake(p,m,u){p.turn=-p.turn;var b=p.b,pc=m.p?p.turn:b[m.t];
+  b[m.f]=pc;
+  if(m.fl&F_EP){b[m.t]=0;b[m.t-8*p.turn]=u.cap;}else b[m.t]=u.cap;
+  if(m.fl&F_CASTLE){if(m.t===6){b[7]=b[5];b[5]=0;}else if(m.t===2){b[0]=b[3];b[3]=0;}else if(m.t===62){b[63]=b[61];b[61]=0;}else if(m.t===58){b[56]=b[59];b[59]=0;}}
+  p.castle=u.castle;p.ep=u.ep;p.half=u.half;}
+function legal(p){var ms=gen(p,false),out=[],me=p.turn;for(var i=0;i<ms.length;i++){var u=make(p,ms[i]);if(!inCheck(p,me))out.push(ms[i]);unmake(p,ms[i],u);}return out;}
+function evaluate(p){var b=p.b,s=0,phase=0,wk=-1,bk=-1,wb=0,bb=0;
+  for(var i=0;i<64;i++){var x=b[i];if(!x)continue;var t=x>0?x:-x;
+    if(t===6){if(x>0)wk=i;else bk=i;continue;}
+    if(t>1)phase+=t===5?4:t===4?2:1;
+    if(t===3){if(x>0)wb++;else bb++;}
+    var idx=x>0?(7-(i>>3))*8+(i&7):i,v=VAL[t]+PST[t][idx];s+=x>0?v:-v;}
+  var KT=phase<=8?KEND:KMID;
+  if(wk>=0)s+=KT[(7-(wk>>3))*8+(wk&7)];if(bk>=0)s-=KT[bk];
+  if(wb>=2)s+=30;if(bb>=2)s-=30;
+  return s;}
+function orderMoves(ms){for(var i=0;i<ms.length;i++){var m=ms[i];m.o=(m.c?VAL[m.c]*10-VAL[m.pt]/10+1000:0)+(m.p?VAL[m.p]:0);}ms.sort(function(a,b){return b.o-a.o;});return ms;}
+function think(p,maxDepth,timeMs,noise){
+  var deadline=Date.now()+timeMs,nodes=0,STOP={};
+  var root=orderMoves(legal(p));if(!root.length)return null;
+  var best=root[0],bestScore=0,doneDepth=0;
+  var nz=root.map(function(){return noise?(Math.random()*2-1)*noise:0;});
+  root.forEach(function(m,i){m.nz=nz[i];});
+  function qs(alpha,beta,ply){
+    if((++nodes&1023)===0&&Date.now()>deadline)throw STOP;
+    var stand=evaluate(p)*p.turn;if(stand>=beta)return stand;if(stand>alpha)alpha=stand;
+    if(ply>40)return stand;
+    var ms=orderMoves(gen(p,true)),me=p.turn;
+    for(var i=0;i<ms.length;i++){var m=ms[i],u=make(p,m);if(inCheck(p,me)){unmake(p,m,u);continue;}
+      var sc=-qs(-beta,-alpha,ply+1);unmake(p,m,u);if(sc>=beta)return sc;if(sc>alpha)alpha=sc;}
+    return alpha;}
+  function ab(depth,alpha,beta,ply){
+    if((++nodes&1023)===0&&Date.now()>deadline)throw STOP;
+    var me=p.turn,inC=inCheck(p,me);
+    if(inC&&ply<10)depth++;
+    if(depth<=0)return qs(alpha,beta,ply);
+    if(p.half>=100)return 0;
+    var ms=orderMoves(gen(p,false)),bestv=-INF,any=false;
+    for(var i=0;i<ms.length;i++){var m=ms[i],u=make(p,m);if(inCheck(p,me)){unmake(p,m,u);continue;}
+      any=true;var sc=-ab(depth-1,-beta,-alpha,ply+1);unmake(p,m,u);
+      if(sc>bestv){bestv=sc;if(sc>alpha){alpha=sc;if(alpha>=beta)break;}}}
+    if(!any)return inC?-MATE+ply:0;
+    return bestv;}
+  for(var d=1;d<=maxDepth;d++){
+    try{var alpha=-INF,cur=null,curS=-INF;
+      for(var i=0;i<root.length;i++){var m=root[i],u=make(p,m);
+        var sc=noise?-ab(d-1,-INF,INF,1):-ab(d-1,-INF,-alpha,1);unmake(p,m,u);
+        var adj=sc+m.nz;
+        if(adj>curS){curS=adj;cur=m;if(!noise&&sc>alpha)alpha=sc;}}
+      best=cur;bestScore=curS-cur.nz;doneDepth=d;
+      root.splice(root.indexOf(cur),1);root.unshift(cur);
+      if(Math.abs(bestScore)>MATE-200)break;
+      if(Date.now()>deadline-timeMs*0.45&&d>=2)break;
+    }catch(e){if(e!==STOP)throw e;break;}}
+  return {move:best,score:bestScore,depth:doneDepth,nodes:nodes};}
+</script>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const FILES='abcdefgh';
+const NAME=['','pawn','knight','bishop','rook','queen','king'];
+const GLYPH=['','♟','♞','♝','♜','♛','♚'];
+const sqName=s=>FILES[s&7]+((s>>3)+1);
+
+// ================= game state =================
+let game=startPos(), hist=[], humanColor=1, state='idle'; // idle | human | thinking | engine | over
+let pending=null, selected=-1, hintMove=null, needResync=false, lastEval='';
+
+// ================= Stockfish (UCI in a Web Worker) =================
+const SF={w:null,ready:false,listeners:[],queue:Promise.resolve(),
+  init(){return new Promise(res=>{
+    let done=false;const finish=ok=>{if(done)return;done=true;this.ready=ok;res(ok);};
+    try{this.w=new Worker('engine/stockfish-19-lite-single.js');}catch(e){return finish(false);}
+    const to=setTimeout(()=>finish(false),25000);
+    this.w.onmessage=e=>{const line=typeof e.data==='string'?e.data:String(e.data);
+      if(line==='uciok')this.w.postMessage('isready');
+      else if(line==='readyok'&&!done){clearTimeout(to);finish(true);}
+      this.listeners.slice().forEach(f=>f(line));};
+    this.w.onerror=()=>{clearTimeout(to);finish(false);};
+    this.w.postMessage('uci');});},
+  search(fen,elo,movetime){
+    const job=()=>new Promise(res=>{
+      let score=0,mate=null,depth=0;
+      const f=line=>{
+        if(line.startsWith('info')&&line.includes(' score ')){const m=line.match(/score (cp|mate) (-?\d+)/),d=line.match(/ depth (\d+)/);
+          if(m){if(m[1]==='cp'){score=+m[2];mate=null;}else{mate=+m[2];score=mate>0?MATE-Math.abs(mate):-(MATE-Math.abs(mate));}}if(d)depth=+d[1];}
+        else if(line.startsWith('bestmove')){this.listeners.splice(this.listeners.indexOf(f),1);clearTimeout(guard);res({uci:line.split(' ')[1],score,mate,depth});}};
+      this.listeners.push(f);
+      const guard=setTimeout(()=>{this.w.postMessage('stop');},movetime+5000);
+      if(elo){this.w.postMessage('setoption name UCI_LimitStrength value true');this.w.postMessage('setoption name UCI_Elo value '+elo);}
+      else this.w.postMessage('setoption name UCI_LimitStrength value false');
+      this.w.postMessage('position fen '+fen);
+      this.w.postMessage('go movetime '+movetime);});
+    const p=this.queue.then(job);this.queue=p.catch(()=>{});return p;}
+};
+SF.init().then(ok=>{$('engineName').textContent=ok?'Engine: Stockfish 19 ✓':'Engine: built-in backup (Stockfish could not load. See README)';});
+
+function toFen(p,ply){
+  let s='';for(let r=7;r>=0;r--){let e=0;for(let f=0;f<8;f++){const x=p.b[r*8+f];if(!x){e++;continue;}if(e){s+=e;e=0;}const ch=' pnbrqk'[Math.abs(x)];s+=x>0?ch.toUpperCase():ch;}if(e)s+=e;if(r)s+='/';}
+  const c=(p.castle&1?'K':'')+(p.castle&2?'Q':'')+(p.castle&4?'k':'')+(p.castle&8?'q':'');
+  return `${s} ${p.turn>0?'w':'b'} ${c||'-'} ${p.ep>=0?sqName(p.ep):'-'} ${p.half} ${Math.floor(ply/2)+1}`;}
+function uciToMove(u){if(!u||u.length<4)return null;const f=(u.charCodeAt(0)-97)+(+u[1]-1)*8,t=(u.charCodeAt(2)-97)+(+u[3]-1)*8;const p=u[4]?' pnbrq'.indexOf(u[4]):0;return {f,t,p:p>0?p:0};}
+
+// built-in fallback engine settings by requested Elo
+function backupLevel(elo){if(!elo)return {depth:8,time:5000,noise:0};if(elo<=1400)return {depth:3,time:1200,noise:25};if(elo<=1800)return {depth:4,time:2000,noise:8};return {depth:6,time:4000,noise:0};}
+// returns {f,t,p,score,depth} with score from the side to move's view (centipawns)
+function runEngine(pos,elo,movetime){
+  if(SF.ready)return SF.search(toFen(pos,hist.length),elo,movetime).then(r=>{const m=uciToMove(r.uci);return m?Object.assign(m,{score:r.score,depth:r.depth}):null;});
+  const L=backupLevel(elo);
+  return new Promise(res=>setTimeout(()=>{const r=think(clonePos(pos),L.depth,Math.min(L.time,movetime*2),L.noise);res(r?{f:r.move.f,t:r.move.t,p:r.move.p,score:r.score,depth:r.depth}:null);},30));}
+function engineMovetime(elo){return elo?900:2500;}
+
+// ================= notation / speech =================
+function san(p,m){
+  const L=legal(p),t=Math.abs(p.b[m.f]);let s;
+  if(m.fl&F_CASTLE)s=(m.t&7)===6?'O-O':'O-O-O';
+  else if(t===1)s=(m.c?FILES[m.f&7]+'x':'')+sqName(m.t)+(m.p?'='+' PNBRQK'[m.p]:'');
+  else{s=' PNBRQK'[t];
+    const amb=L.filter(o=>o.t===m.t&&o.f!==m.f&&Math.abs(p.b[o.f])===t);
+    if(amb.length){const sf=amb.some(o=>(o.f&7)===(m.f&7)),sr=amb.some(o=>(o.f>>3)===(m.f>>3));
+      s+=!sf?FILES[m.f&7]:!sr?String((m.f>>3)+1):sqName(m.f);}
+    s+=(m.c?'x':'')+sqName(m.t);}
+  const u=make(p,m);if(inCheck(p,p.turn))s+=legal(p).length?'+':'#';unmake(p,m,u);
+  return s;}
+function describe(p,m){
+  const t=Math.abs(p.b[m.f]);let s;
+  if(m.fl&F_CASTLE){const k=(m.t&7)===6,rf=k?m.t+1:m.t-2,rt=k?m.t-1:m.t+1;
+    s=`Castles ${k?'king':'queen'} side. King ${sqName(m.f)} to ${sqName(m.t)}, rook ${sqName(rf)} to ${sqName(rt)}`;}
+  else{s=`${NAME[t][0].toUpperCase()+NAME[t].slice(1)} ${sqName(m.f)} to ${sqName(m.t)}`;
+    if(m.c)s+=`, takes ${NAME[m.c]}`+(m.fl&F_EP?' en passant':'');
+    if(m.p)s+=`, promotes to ${NAME[m.p]}`;}
+  const u=make(p,m);if(inCheck(p,p.turn))s+=legal(p).length?'. Check!':'. Checkmate!';unmake(p,m,u);
+  return s;}
+function speak(text){
+  if(!$('chkVoice').checked||!window.speechSynthesis)return;
+  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text.replace(/\b([a-h])([1-8])\b/g,'$1 $2'));u.lang='en-US';u.rate=0.95;speechSynthesis.speak(u);}catch(e){}}
+let actx=null;
+function beep(ok){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=ok?880:220;g.gain.value=0.07;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.12);}catch(e){}}
+
+// ================= UI =================
+function setStatus(html,kind){const el=$('status');el.innerHTML=html;el.className=kind||'';}
+function sameMove(a,b){return a&&b&&a.f===b.f&&a.t===b.t&&(a.p||0)===(b.p||0);}
+function findLegal(m){return legal(game).find(x=>sameMove(x,m));}
+
+function renderBoard(heat){
+  const el=$('board');el.innerHTML='';
+  const last=hist.length?hist[hist.length-1].m:null;
+  const targets=selected>=0?legal(game).filter(m=>m.f===selected).map(m=>m.t):[];
+  for(let i=0;i<8;i++)for(let j=0;j<8;j++){
+    const rank=humanColor===1?7-i:i,file=humanColor===1?j:7-j,s=rank*8+file;
+    const d=document.createElement('div');
+    d.className='sq '+(((rank+file)&1)?'l':'d');
+    if(last&&(last.f===s||last.t===s))d.classList.add('last');
+    if(pending&&(pending.f===s||pending.t===s))d.classList.add('todo');
+    if(hintMove&&(hintMove.f===s||hintMove.t===s))d.classList.add('hint');
+    if(s===selected)d.classList.add('sel');
+    if(targets.includes(s))d.classList.add('dot');
+    if(heat&&$('chkHeat').checked&&heat[s]>0.05){const h=document.createElement('div');h.className='heat';h.style.opacity=Math.min(0.55,heat[s]*0.55);d.appendChild(h);}
+    const x=game.b[s];
+    if(x){const sp=document.createElement('span');sp.className='pc '+(x>0?'w':'b');sp.textContent=GLYPH[Math.abs(x)]+'︎';d.appendChild(sp);}
+    if(i===7){const c=document.createElement('span');c.className='coord f';c.textContent=FILES[file];d.appendChild(c);}
+    if(j===0){const c=document.createElement('span');c.className='coord r';c.textContent=rank+1;d.appendChild(c);}
+    d.onclick=()=>onSquareClick(s);
+    el.appendChild(d);}
+  let html='';hist.forEach((h,k)=>{if(k%2===0)html+=`<b>${k/2+1}.</b> `;html+=h.san+' ';});
+  $('moves').innerHTML=html||'No moves yet.';$('moves').scrollTop=1e6;
+  $('evalLine').textContent=lastEval;
+  updateButtons();}
+function updateButtons(){
+  $('btnDone').disabled=!(state==='engine'||state==='human');
+  $('btnDone').textContent=state==='engine'?'✓ I made its move':'✓ My move is done';
+  $('btnHint').disabled=state!=='human';
+  $('btnUndo').disabled=!(hist.length&&(state==='human'||state==='engine'||state==='over'));
+  $('btnSync').disabled=!(H&&lastFeat&&state!=='idle');
+  $('btnStart').classList.toggle('hide',state!=='idle');
+  $('btnReread').classList.toggle('hide',!(mode==='photo'&&H&&state!=='idle'));}
+
+// ================= game flow =================
+function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});return s;}
+function gameOverCheck(){
+  const L=legal(game);
+  if(!L.length){state='over';pending=null;
+    if(inCheck(game,game.turn)){const won=game.turn!==humanColor;setStatus(won?'♛ Checkmate. You win, well played!':'Checkmate. The engine wins. Use Take back to try again, or start a new game.',won?'good':'bad');speak(won?'Checkmate. You win!':'Checkmate.');}
+    else{setStatus('Stalemate. It’s a draw.');speak('Stalemate. Draw.');}
+    return true;}
+  if(game.half>=100){state='over';setStatus('Draw by the 50-move rule.');return true;}
+  const pcs=[];for(const x of game.b)if(x&&Math.abs(x)!==6)pcs.push(Math.abs(x));
+  if(pcs.length===0||(pcs.length===1&&(pcs[0]===2||pcs[0]===3))){state='over';setStatus('Draw: not enough material to checkmate.');return true;}
+  return false;}
+
+function startGame(){
+  game=startPos();hist=[];pending=null;selected=-1;hintMove=null;lastEval='';
+  humanColor=+$('selColor').value;rebuild();
+  clearBig();
+  if(SF.ready)SF.w.postMessage('ucinewgame');
+  if(H&&lastFeat){ref=lastFeat.slice();needResync=false;}else{ref=null;}
+  setStep(4);
+  if(humanColor===-1)engineTurn();
+  else{state='human';setStatus(mode==='photo'?'Your move (White). Make it on the board, then take a photo.':'Your move (White). Make it on the board and take your hand away.');}
+  renderBoard();}
+function clearBig(){$('bigMove').textContent='';$('bigMoveSub').textContent='';$('cands').innerHTML='';}
+
+function commitHuman(m){
+  hintMove=null;selected=-1;clearBig();
+  const s=pushMove(m);captureRef();beep(true);
+  renderBoard();
+  if(gameOverCheck()){renderBoard();return;}
+  setStatus(`You played <b>${s}</b>. Engine is thinking…`,'good');
+  engineTurn();}
+
+function engineTurn(){
+  state='thinking';renderBoard();
+  if(!hist.length)setStatus('Engine is thinking…');
+  const elo=+$('selLevel').value,t0=Date.now();
+  runEngine(game,elo,engineMovetime(elo)).then(r=>{
+    if(state!=='thinking')return;
+    const m=r&&findLegal(r);if(!m){gameOverCheck();renderBoard();return;}
+    setTimeout(()=>{
+      if(state!=='thinking')return;
+      pending=m;state='engine';
+      const mine=-r.score; // engine's score is from its own side; flip to yours
+      lastEval=Math.abs(r.score)>MATE-200?(r.score>0?'Engine sees a forced mate against you.':'You have a forced mate available!'):`Evaluation (your view): ${mine>=0?'+':''}${(mine/100).toFixed(1)}`;
+      const s=san(game,m),desc=describe(game,m);
+      $('bigMove').textContent=s;$('bigMoveSub').textContent=desc;
+      setStatus(mode==='photo'?`Engine plays <b>${s}</b>. Make this move on your board, then take a photo (or press ✓).`:`Engine plays <b>${s}</b>. Please make this move on your board.`);
+      speak(desc);renderBoard();
+    },Math.max(0,400-(Date.now()-t0)));
+  });}
+
+function confirmEngine(){
+  if(!pending)return;
+  const m=pending;pending=null;pushMove(m);captureRef();beep(true);clearBig();
+  if(gameOverCheck()){renderBoard();return;}
+  state='human';
+  setStatus((inCheck(game,game.turn)?'You are in <b>check</b>! ':'')+(mode==='photo'?'Your move. Then take a photo.':'Your move.'));
+  renderBoard();}
+
+function onSquareClick(s){
+  if(state==='engine'){if(pending&&(s===pending.t||s===pending.f))confirmEngine();return;}
+  if(state!=='human')return;
+  const x=game.b[s];
+  if(selected>=0){
+    const ms=legal(game).filter(m=>m.f===selected&&m.t===s);
+    if(ms.length){selected=-1;choosePromoThen(ms,commitHuman);return;}}
+  selected=(x&&(x>0)===(game.turn>0))?(selected===s?-1:s):-1;
+  renderBoard(curHeat);}
+function choosePromoThen(ms,fn){if(ms.length>1)askPromo(game.turn).then(pt=>fn(ms.find(m=>m.p===pt)));else fn(ms[0]);}
+function askPromo(color){
+  return new Promise(res=>{const box=$('promoBtns');box.innerHTML='';
+    [5,4,3,2].forEach(pt=>{const b=document.createElement('button');b.innerHTML=`<span class="pc ${color>0?'w':'b'}">${GLYPH[pt]}︎</span>`;b.onclick=()=>{$('modal').classList.remove('show');res(pt);};box.appendChild(b);});
+    $('modal').classList.add('show');});}
+
+function undo(){
+  if(!hist.length||state==='thinking')return;
+  pending=null;
+  while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
+  if(game.turn!==humanColor){engineTurn();return;}
+  state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();
+  setStatus('Moves taken back. Set your real board to match the screen, then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
+  renderBoard();}
+
+function hint(){
+  if(state!=='human')return;
+  setStatus('Looking for a good move…');
+  runEngine(game,0,1500).then(r=>{if(state!=='human'||!r)return;const m=findLegal(r);if(!m)return;hintMove=m;setStatus(`Hint: consider <b>${san(game,m)}</b>.`);renderBoard(curHeat);});}
+
+// ================= camera / photo vision =================
+const video=$('video'),photo=$('photo'),overlay=$('overlay'),octx=overlay.getContext('2d');
+const proc=document.createElement('canvas'),pctx=proc.getContext('2d',{willReadFrequently:true});
+const rect=$('rect'),rctx=rect.getContext('2d');
+let mode='none'; // none | live | photo
+let stream=null,cornerSets={live:[],photo:[]},corners=[],H=null,sampleIdx=null,rectIdx=null,procW=0,procH=0;
+let lastFeat=null,prevFeat=null,ref=null,curHeat=null,stillCount=0,sawMotion=false,captureNext=false,dragging=-1;
+let photoDirty=false,photoRead=false;
+const SN=10,SPS=SN*SN,TOPK=30; // 10x10 samples per square; score = mean of the 30 strongest pixel changes
+
+function setStep(n){['st1','st2','st3'].forEach((id,i)=>{$(id).className=i+1<n?'done':i+1===n?'now':'';});}
+function srcEl(){return mode==='photo'?photo:video;}
+function srcW(){return mode==='photo'?photo.naturalWidth:video.videoWidth;}
+function srcH(){return mode==='photo'?photo.naturalHeight:video.videoHeight;}
+function sourceReady(){return mode==='photo'?(photo.complete&&photo.naturalWidth>0):(mode==='live'&&video.readyState>=2&&video.videoWidth>0);}
+
+function setMode(m){
+  if(mode===m)return;
+  const wasGame=state!=='idle'&&mode!=='none';
+  cornerSets[mode]=corners;mode=m;corners=cornerSets[m]||[];
+  video.classList.toggle('hide',m!=='live');photo.classList.toggle('hide',m!=='photo');
+  $('modeTag').classList.remove('hide');$('modeTag').textContent=m==='live'?'LIVE':'PHOTO';
+  $('btnCorners').disabled=false;
+  ref=null;lastFeat=null;prevFeat=null;curHeat=null;
+  if(wasGame){needResync=true;}
+  rebuild();}
+
+async function startCamera(deviceId){
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    setStatus('The live camera needs the app to be opened from an <b>https://</b> address (or localhost). See the README for free hosting. Meanwhile, use <b>Take photo</b> or tap moves on the board.','bad');return;}
+  try{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:deviceId?{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}}:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
+    video.srcObject=stream;await video.play();
+    setMode('live');
+    $('btnCam').textContent='Restart live camera';$('btnCam').classList.remove('primary');
+    const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    const sel=$('camSel');
+    if(devs.length>1){sel.classList.remove('hide');sel.innerHTML='';const cur=stream.getVideoTracks()[0].getSettings().deviceId;
+      devs.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||('Camera '+(i+1));if(d.deviceId===cur)o.selected=true;sel.appendChild(o);});}
+    if(!corners.length)loadCorners();
+    rebuild();
+    setStep(corners.length<4?2:3);
+    if(state==='idle')setStatus(corners.length<4?'Tap the 4 outer corners of the board on the camera view: a1, h1, h8, a8.':'Corners restored from last time. Check the grid lines up, set up the pieces and press <b>Start game</b>.');
+    else if(needResync)setStatus('Live camera on. Make sure the board matches the screen, then press <b>⟳ Re-sync board</b>.');
+  }catch(e){setStatus('Camera could not start: '+(e.message||e.name)+'. Check the browser’s camera permission, or use <b>Take photo</b>.','bad');}}
+
+function onPhotoFile(file){
+  if(!file)return;
+  const url=URL.createObjectURL(file);
+  photo.onload=()=>{
+    setMode('photo');
+    rebuild();photoDirty=true;photoRead=state!=='idle'&&!needResync;
+    if(corners.length<4){setStep(2);setStatus('Tap the 4 outer corners of the board on the photo: a1, h1, h8, a8.');}
+    else if(state==='idle'){setStep(3);setStatus('Photo loaded. Check the gold grid lines up (drag the dots if not), then press <b>Start game</b>.');}
+    else if(needResync)setStatus('Photo loaded. If the board matches the screen, press <b>⟳ Re-sync board</b>.');
+  };
+  photo.src=url;}
+
+function solveH(src,dst){
+  const A=[],bv=[];
+  for(let i=0;i<4;i++){const [X,Y]=src[i],[x,y]=dst[i];A.push([X,Y,1,0,0,0,-X*x,-Y*x]);bv.push(x);A.push([0,0,0,X,Y,1,-X*y,-Y*y]);bv.push(y);}
+  for(let c=0;c<8;c++){let piv=c;for(let r=c+1;r<8;r++)if(Math.abs(A[r][c])>Math.abs(A[piv][c]))piv=r;
+    [A[c],A[piv]]=[A[piv],A[c]];[bv[c],bv[piv]]=[bv[piv],bv[c]];
+    if(Math.abs(A[c][c])<1e-12)return null;
+    for(let r=0;r<8;r++){if(r===c)continue;const f=A[r][c]/A[c][c];if(!f)continue;for(let k=c;k<8;k++)A[r][k]-=f*A[c][k];bv[r]-=f*bv[c];}}
+  return bv.map((v,i)=>v/A[i][i]);}
+function applyH(X,Y){const h=H,w=h[6]*X+h[7]*Y+1;return [(h[0]*X+h[1]*Y+h[2])/w,(h[3]*X+h[4]*Y+h[5])/w];}
+
+function rebuild(){
+  H=corners.length===4?solveH([[0,0],[8,0],[8,8],[0,8]],corners):null;
+  sampleIdx=null;rectIdx=null;prevFeat=null;
+  if(!H||!sourceReady())return;
+  procW=480;procH=Math.max(1,Math.round(480*srcH()/srcW()));proc.width=procW;proc.height=procH;
+  const px=(x,y)=>{const xi=Math.min(procW-1,Math.max(0,Math.round(x*procW))),yi=Math.min(procH-1,Math.max(0,Math.round(y*procH)));return (yi*procW+xi)*4;};
+  sampleIdx=new Int32Array(64*SPS);
+  for(let s=0;s<64;s++){const f=s&7,r=s>>3;let k=0;
+    for(let i=0;i<SN;i++)for(let j=0;j<SN;j++){const [x,y]=applyH(f+0.12+0.76*(i+0.5)/SN,r+0.12+0.76*(j+0.5)/SN);sampleIdx[s*SPS+k++]=px(x,y);}}
+  const RW=rect.width;rectIdx=new Int32Array(RW*RW);
+  for(let v=0;v<RW;v++)for(let u=0;u<RW;u++){let X=(u+0.5)/RW*8,Y=8-(v+0.5)/RW*8;if(humanColor===-1){X=8-X;Y=8-Y;}
+    const [x,y]=applyH(X,Y);rectIdx[v*RW+u]=px(x,y);}
+  if(mode==='photo')photoDirty=true;}
+function saveCorners(){try{localStorage.setItem('ccc_corners_'+mode,JSON.stringify(corners));}catch(e){}}
+function loadCorners(){try{const c=JSON.parse(localStorage.getItem('ccc_corners_'+mode)||'[]');if(Array.isArray(c)&&c.length===4)corners=c;}catch(e){}}
+
+function extract(data){const out=new Uint8Array(64*SPS*3);for(let i=0,k=0;i<sampleIdx.length;i++){const p=sampleIdx[i];out[k++]=data[p];out[k++]=data[p+1];out[k++]=data[p+2];}return out;}
+const pixD=new Float32Array(SPS);
+function sqDiff(a,b){const d=new Float32Array(64);
+  for(let s=0;s<64;s++){const o=s*SPS*3;
+    for(let k=0;k<SPS;k++){const q=o+k*3;pixD[k]=(Math.abs(a[q]-b[q])+Math.abs(a[q+1]-b[q+1])+Math.abs(a[q+2]-b[q+2]))/3;}
+    pixD.sort();let t=0;for(let k=SPS-TOPK;k<SPS;k++)t+=pixD[k];d[s]=t/TOPK;}
+  return d;}
+function adjDiff(a,b){const d=sqDiff(a,b);const med=Array.from(d).sort((x,y)=>x-y)[32];for(let s=0;s<64;s++)d[s]=Math.max(0,d[s]-med);return d;}
+function captureRef(){if(lastFeat&&H){ref=lastFeat.slice();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
+function thr(){return +$('sens').value;}
+function changeSet(m,mover){const S=[m.f,m.t];
+  if(m.fl&F_EP)S.push(m.t-8*mover);
+  if(m.fl&F_CASTLE){if(m.t===6)S.push(7,5);else if(m.t===2)S.push(0,3);else if(m.t===62)S.push(63,61);else if(m.t===58)S.push(56,59);}
+  return S;}
+function scoreMove(d,m,mover){const S=changeSet(m,mover);let mn=1e9,mx=0;for(const s of S)mn=Math.min(mn,d[s]);for(let s=0;s<64;s++)if(!S.includes(s))mx=Math.max(mx,d[s]);return {m,minS:mn,maxOut:mx,score:mn-mx};}
+
+// force = user explicitly asked (button) ; fromPhoto = a new photo was taken
+function analyse(force,fromPhoto){
+  if(!ref||!lastFeat||needResync){if(force||fromPhoto)setStatus('Camera isn’t synced with the game. If the real board matches the screen, press <b>⟳ Re-sync board</b>. Or tap the move on the screen board.','bad');return;}
+  const d=adjDiff(lastFeat,ref),T=thr(),maxD=Math.max(...d);
+  // many squares changed at once = a hand or arm is still over the board: wait quietly (live camera only)
+  if(!force&&!fromPhoto&&d.filter(v=>v>T).length>7)return;
+  if(state==='human'){
+    if(maxD<T){if(force||fromPhoto)setStatus('I don’t see any change on the board yet. Make your move'+(fromPhoto?', then take a new photo.':'.'),'bad');return;}
+    const L=legal(game);
+    const res=L.map(m=>scoreMove(d,m,game.turn)).sort((a,b)=>b.score-a.score);
+    const uniq=[];for(const r of res)if(!uniq.some(u=>u.m.f===r.m.f&&u.m.t===r.m.t))uniq.push(r);
+    const b=uniq[0];
+    if(b&&b.minS>T&&b.score>T*0.5){choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+    const opts=uniq.filter(r=>r.minS>T*0.5).slice(0,3);
+    const box=$('cands');box.innerHTML='';
+    if(opts.length){
+      setStatus('I’m not sure which move you made. Tap it below, or tap it on the board.','bad');
+      opts.forEach(r=>{const bt=document.createElement('button');bt.textContent=san(game,r.m);bt.onclick=()=>choosePromoThen(L.filter(m=>m.f===r.m.f&&m.t===r.m.t),commitHuman);box.appendChild(bt);});
+      beep(false);
+    }else if(force||fromPhoto||maxD>T*1.5){setStatus('That doesn’t look like a legal move from this position. Check your board matches the screen, or tap your move on the screen board.','bad');beep(false);}
+  }else if(state==='engine'&&pending){
+    if(force){confirmEngine();return;}
+    if(maxD<T){if(fromPhoto)setStatus(`No change seen yet. Play <b>${san(game,pending)}</b> on your board, then take a photo.`,'bad');return;}
+    const r=scoreMove(d,pending,game.turn);
+    if(r.minS>T*0.8&&r.score>T*0.3){confirmEngine();return;}
+    setStatus(`That doesn’t look like <b>${san(game,pending)}</b> yet. Please make exactly that move, or press <b>✓ I made its move</b>.`,'bad');beep(false);}
+}
+
+function drawPoly(f,r,fill,stroke){
+  const W=overlay.width,Hh=overlay.height,pts=[[f,r],[f+1,r],[f+1,r+1],[f,r+1]].map(([X,Y])=>{const [x,y]=applyH(X,Y);return [x*W,y*Hh];});
+  octx.beginPath();pts.forEach((p,i)=>i?octx.lineTo(p[0],p[1]):octx.moveTo(p[0],p[1]));octx.closePath();
+  if(fill){octx.fillStyle=fill;octx.fill();}if(stroke){octx.strokeStyle=stroke;octx.lineWidth=3;octx.stroke();}}
+function drawOverlay(){
+  const W=overlay.clientWidth,Hh=overlay.clientHeight,dpr=window.devicePixelRatio||1;
+  if(overlay.width!==Math.round(W*dpr)||overlay.height!==Math.round(Hh*dpr)){overlay.width=Math.round(W*dpr);overlay.height=Math.round(Hh*dpr);}
+  const w=overlay.width,h=overlay.height;octx.clearRect(0,0,w,h);
+  if(mode==='none'){return;}
+  const labels=['a1','h1','h8','a8'];
+  if(H){
+    if(curHeat&&$('chkHeat').checked)for(let s=0;s<64;s++){const v=curHeat[s];if(v>0.08)drawPoly(s&7,s>>3,`rgba(255,40,40,${Math.min(0.5,v*0.5)})`);}
+    if(pending){drawPoly(pending.f&7,pending.f>>3,'rgba(80,200,110,.35)','#5fbf7a');drawPoly(pending.t&7,pending.t>>3,'rgba(80,200,110,.6)','#5fbf7a');
+      const [x1,y1]=applyH((pending.f&7)+.5,(pending.f>>3)+.5),[x2,y2]=applyH((pending.t&7)+.5,(pending.t>>3)+.5);
+      octx.strokeStyle='#5fbf7a';octx.lineWidth=5*dpr;octx.beginPath();octx.moveTo(x1*w,y1*h);octx.lineTo(x2*w,y2*h);octx.stroke();}
+    if(hintMove){drawPoly(hintMove.f&7,hintMove.f>>3,null,'#8a8aff');drawPoly(hintMove.t&7,hintMove.t>>3,'rgba(120,120,255,.4)','#8a8aff');}
+    octx.strokeStyle='rgba(226,180,80,.85)';octx.lineWidth=1.5*dpr;
+    for(let k=0;k<=8;k++){let [a,b]=applyH(k,0),[c,d]=applyH(k,8);octx.beginPath();octx.moveTo(a*w,b*h);octx.lineTo(c*w,d*h);octx.stroke();
+      [a,b]=applyH(0,k);[c,d]=applyH(8,k);octx.beginPath();octx.moveTo(a*w,b*h);octx.lineTo(c*w,d*h);octx.stroke();}}
+  corners.forEach((c,i)=>{octx.fillStyle='#e2b450';octx.beginPath();octx.arc(c[0]*w,c[1]*h,9*dpr,0,7);octx.fill();
+    octx.font=`bold ${14*dpr}px system-ui`;octx.fillStyle='#000';octx.fillText(labels[i],c[0]*w+11*dpr+1,c[1]*h-9*dpr+1);octx.fillStyle='#fff';octx.fillText(labels[i],c[0]*w+11*dpr,c[1]*h-9*dpr);});
+  $('camMsg').textContent=corners.length<4?`Tap the outer corner of square ${labels[corners.length]}${corners.length===0?' (White’s bottom-left)':''}`:'';}
+function drawRect(data){
+  if(!rectIdx)return;const RW=rect.width,img=rctx.createImageData(RW,RW);
+  for(let i=0;i<rectIdx.length;i++){const p=rectIdx[i],o=i*4;img.data[o]=data[p];img.data[o+1]=data[p+1];img.data[o+2]=data[p+2];img.data[o+3]=255;}
+  rctx.putImageData(img,0,0);const c=RW/8;
+  if(curHeat&&$('chkHeat').checked)for(let s=0;s<64;s++){const v=curHeat[s];if(v<0.08)continue;let f=s&7,r=s>>3;if(humanColor===-1){f=7-f;r=7-r;}rctx.fillStyle=`rgba(255,40,40,${Math.min(.55,v*.55)})`;rctx.fillRect(f*c,(7-r)*c,c,c);}
+  rctx.strokeStyle='rgba(226,180,80,.7)';rctx.lineWidth=1;for(let k=0;k<=8;k++){rctx.beginPath();rctx.moveTo(k*c,0);rctx.lineTo(k*c,RW);rctx.stroke();rctx.beginPath();rctx.moveTo(0,k*c);rctx.lineTo(RW,k*c);rctx.stroke();}}
+function grab(){pctx.drawImage(srcEl(),0,0,procW,procH);return pctx.getImageData(0,0,procW,procH).data;}
+function updateHeat(){if(ref&&lastFeat&&!needResync){const d=adjDiff(lastFeat,ref),T=thr();curHeat=Array.from(d).map(v=>Math.max(0,(v-T*0.5)/(T*1.5)));}else curHeat=null;}
+
+let renderTick=0;
+function tick(){
+  try{
+    if(H&&sourceReady()&&!sampleIdx)rebuild();
+    if(mode==='live'&&sampleIdx&&sourceReady()){
+      const data=grab(),feat=extract(data);
+      if(prevFeat){const md=Math.max(...sqDiff(feat,prevFeat)),T=thr();
+        if(md<Math.max(5,T*0.4))stillCount++;else{stillCount=0;if(md>T*0.8)sawMotion=true;}}
+      prevFeat=feat;lastFeat=feat;
+      if(captureNext){captureNext=false;ref=feat.slice();needResync=false;}
+      updateHeat();drawRect(data);
+      if(++renderTick%4===0&&(state==='human'||state==='engine'))renderBoard(curHeat);
+      if(sawMotion&&stillCount===7&&$('chkAuto').checked&&!$('modal').classList.contains('show')){sawMotion=false;analyse(false,false);}
+      updateButtons();
+    }else if(mode==='photo'&&sampleIdx&&photoDirty){
+      photoDirty=false;const data=grab();lastFeat=extract(data);updateHeat();drawRect(data);
+      if(photoRead){photoRead=false;analyse(false,true);}
+      renderBoard(curHeat);}
+    drawOverlay();
+  }catch(e){console.error(e);}
+  setTimeout(tick,120);}
+
+overlay.addEventListener('pointerdown',e=>{
+  if(mode==='none')return;
+  const r=overlay.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+  if(corners.length<4){corners.push([x,y]);
+    if(corners.length===4){rebuild();saveCorners();setStep(3);
+      if(state==='idle')setStatus('Corners set. Check the gold grid lines up with the squares (drag the dots to fine-tune). Set up the pieces, choose your colour, then press <b>Start game</b>.');
+      else{setStatus('Corners set. If the board matches the screen, press <b>⟳ Re-sync board</b>.');needResync=true;}}
+    return;}
+  let best=-1,bd=36;corners.forEach((c,i)=>{const d=Math.hypot((c[0]-x)*r.width,(c[1]-y)*r.height);if(d<bd){bd=d;best=i;}});
+  if(best>=0){dragging=best;overlay.setPointerCapture(e.pointerId);}});
+overlay.addEventListener('pointermove',e=>{if(dragging<0)return;const r=overlay.getBoundingClientRect();corners[dragging]=[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))];rebuild();});
+overlay.addEventListener('pointerup',()=>{if(dragging<0)return;dragging=-1;saveCorners();rebuild();
+  // live: the camera framing changed slightly, so the current view becomes the new reference
+  if(mode==='live'&&state!=='idle'&&!needResync)captureNext=true;});
+
+// ================= buttons =================
+$('btnCam').onclick=()=>startCamera($('camSel').value||undefined);
+$('camSel').onchange=()=>startCamera($('camSel').value);
+$('photoCap').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
+$('photoUp').onchange=e=>{onPhotoFile(e.target.files[0]);e.target.value='';};
+$('btnReread').onclick=()=>{photoDirty=true;photoRead=true;};
+$('btnCorners').onclick=()=>{corners=[];H=null;sampleIdx=null;setStep(2);setStatus('Tap the 4 outer corners: a1, h1, h8, a8.');};
+$('btnStart').onclick=()=>{speak(' ');beep(true);startGame();};
+$('btnDone').onclick=()=>{if(state==='engine')confirmEngine();else if(state==='human')analyse(true,false);};
+$('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
+  setStatus(state==='engine'&&pending?`Synced. Now play the engine’s move <b>${san(game,pending)}</b>.`:'Board re-synced. Your move.','good');renderBoard();};
+$('btnUndo').onclick=undo;
+$('btnHint').onclick=hint;
+$('btnNew').onclick=()=>{state='idle';pending=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
+  setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
+$('selColor').onchange=()=>{if(state==='idle'){humanColor=+$('selColor').value;rebuild();renderBoard();}};
+window.addEventListener('resize',drawOverlay);
+
+renderBoard();tick();
+// for automated testing only
+window.__ccc={get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get pending(){return pending&&{f:pending.f,t:pending.t,p:pending.p}},get engineReady(){return SF.ready},
+  board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
+  legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
+})();
+</script>
+</body>
+</html>
