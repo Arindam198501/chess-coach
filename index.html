@@ -67,6 +67,8 @@
   body.playing.camOpen #camPanel{position:fixed;inset:0;z-index:40;border-radius:0;overflow:auto}
   body.playing.camOpen #camClose{display:inline-block}
   #board{position:relative}
+  #camState{font-size:13px;color:var(--muted);text-align:center;margin:-4px 0 8px;padding:5px 8px;border-radius:6px;background:#20242b}
+  #camState.good{color:var(--good)} #camState.bad{color:var(--bad)}
   #arrow{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6}
   #cands{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;justify-content:center}
   #cands:empty{display:none}
@@ -147,6 +149,7 @@
   <section id="gamePanel">
     <h2>Game</h2>
     <div id="moveCard"><div id="mcLabel"></div><div id="bigMove"></div><div id="bigMoveSub"></div></div>
+    <div id="camState" class="hide"></div>
     <div id="status">Start the live camera (or take a photo) and mark the board corners. You can also play without a camera by tapping moves on the board below.</div>
     <div id="cands"></div>
     <div class="row" style="justify-content:center">
@@ -161,6 +164,7 @@
       <button id="btnUndo" disabled>↶ Take back</button>
       <button id="btnSync" disabled title="Use when the real board matches the screen but the app is confused">⟳ Re-sync board</button>
       <button id="btnNew">New game</button>
+      <button id="btnSnap" title="Saves what the camera saw, to send to Claude">📸 Save snapshot</button>
     </div>
     <div class="row" style="justify-content:center">
       <label>I play <select id="selColor"><option value="1">White</option><option value="-1">Black</option></select></label>
@@ -551,7 +555,7 @@ const rect=$('rect'),rctx=rect.getContext('2d');
 let mode='none'; // none | live | photo
 let stream=null,cornerSets={live:[],photo:[]},corners=[],H=null,sampleIdx=null,rectIdx=null,procW=0,procH=0;
 let lastFeat=null,prevFeat=null,ref=null,curHeat=null,stillCount=0,sawMotion=false,captureNext=false,dragging=-1;
-let photoDirty=false,photoRead=false;
+let photoDirty=false,photoRead=false,mdHist=[],noiseLvl=5,featHist=[],camActivity='',lastMotionAt=0,stableTick=0,stableKey='',stableDone='',refShot=null,lastAnalysis='';
 const SN=10,SPS=SN*SN,TOPK=30; // 10x10 samples per square; score = mean of the 30 strongest pixel changes
 
 function setStep(n){['st1','st2','st3'].forEach((id,i)=>{$(id).className=i+1<n?'done':i+1===n?'now':'';});}
@@ -653,7 +657,7 @@ function sqDiff(a,b){const d=new Float32Array(64);
     d[s]=t/K+0.3*(Math.abs(a0-b0)+Math.abs(a1-b1)+Math.abs(a2-b2))/3;}
   return d;}
 function adjDiff(a,b){const d=sqDiff(a,b);const med=Array.from(d).sort((x,y)=>x-y)[32];for(let s=0;s<64;s++)d[s]=Math.max(0,d[s]-med);return d;}
-function captureRef(){if(lastFeat&&H){ref=lastFeat.slice();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
+function captureRef(){stableKey='';stableDone='';if(lastFeat&&H){ref=lastFeat.slice();refShot=snapFrame();needResync=false;curHeat=null;}else if(mode==='live')captureNext=true;}
 function thr(){return +$('sens').value;}
 function changeSet(m,mover){const S=[m.f,m.t];
   if(m.fl&F_EP)S.push(m.t-8*mover);
@@ -662,7 +666,7 @@ function changeSet(m,mover){const S=[m.f,m.t];
 function scoreMove(d,m,mover){const S=changeSet(m,mover);let mn=1e9,mx=0;for(const s of S)mn=Math.min(mn,d[s]);for(let s=0;s<64;s++)if(!S.includes(s))mx=Math.max(mx,d[s]);let sm=0;for(const s of S)sm+=d[s];return {m,minS:mn,meanS:sm/S.length,maxOut:mx,score:mn-mx};}
 
 // force = user explicitly asked (button) ; fromPhoto = a new photo was taken
-function analyse(force,fromPhoto){
+function analyse(force,fromPhoto){lastAnalysis=new Date().toLocaleTimeString();
   if(!ref||!lastFeat||needResync){if(force||fromPhoto)setStatus('Camera isn’t synced with the game. If the real board matches the screen, press <b>⟳ Re-sync board</b>. Or tap the move on the screen board.','bad');return;}
   const d=adjDiff(lastFeat,ref),T=thr(),maxD=Math.max(...d);
   // many squares changed at once = a hand or arm is still over the board: wait quietly (live camera only)
@@ -698,6 +702,39 @@ function analyse(force,fromPhoto){
     if(!fromPhoto&&v>T*0.7&&other<v*0.85){if(waitKey!=='rm'){waitKey='rm';return;}waitKey=null;confirmRemoval();return;} // second look: accept
     if(fromPhoto)setStatus(v<T?`I don’t see the piece removed from ${sqName(removeSq)} yet. Remove it, then take a new photo.`:`Something else changed on the board too. Only remove the piece on ${sqName(removeSq)}, or press ✓ Piece removed.`,'bad');}
 }
+
+function showCamState(){
+  const el=$('camState');if(!el)return;
+  if(mode!=='live'||state==='idle'||state==='over'){el.classList.add('hide');return;}
+  el.classList.remove('hide');
+  let t,c;
+  if(needResync||!ref){t='⚠️ Camera not synced: press ⟳ Re-sync board when the real board matches the screen';c='bad';}
+  else if(state==='thinking'){t='👁 Watching';c='';}
+  else if(camActivity==='move'){t='✋ Movement seen… take your hand away';c='';}
+  else if(camActivity==='settling'){t='⏳ Waiting for the picture to settle…';c='';}
+  else{const d=adjDiff(lastFeat,ref),T=thr(),n=Array.from(d).filter(v=>v>T).length;
+    t=n?`🔍 ${n} square${n>1?'s':''} changed: reading…`:'👁 Watching the board: no change yet';c=n?'good':'';}
+  el.textContent=t+`  ·  noise ${noiseLvl.toFixed(0)}`;el.className=c;
+  $('camChip').textContent=camActivity==='move'?'✋ movement':'👁 watching';}
+// small picture of the current camera frame (for the snapshot)
+function snapFrame(){try{const el=srcEl(),w=640,h=Math.round(640*srcH()/srcW()),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(el,0,0,w,h);return c;}catch(e){return null;}}
+function saveSnapshot(){
+  const now=snapFrame();if(!now){setStatus('No camera picture to save yet.','bad');return;}
+  const before=refShot||now,w=640,h=now.height,pad=150,c=document.createElement('canvas');c.width=w*2+10;c.height=h+pad;
+  const x=c.getContext('2d');x.fillStyle='#14161a';x.fillRect(0,0,c.width,c.height);x.drawImage(before,0,0,w,h);x.drawImage(now,w+10,0,w,h);
+  let d=null;if(ref&&lastFeat)d=adjDiff(lastFeat,ref);
+  if(H){[[0,before],[w+10,now]].forEach(([ox],idx)=>{x.strokeStyle='rgba(226,180,80,.9)';x.lineWidth=1.5;
+    for(let k=0;k<=8;k++){let [a,b]=applyH(k,0),[cc,dd]=applyH(k,8);x.beginPath();x.moveTo(ox+a*w,b*h);x.lineTo(ox+cc*w,dd*h);x.stroke();[a,b]=applyH(0,k);[cc,dd]=applyH(8,k);x.beginPath();x.moveTo(ox+a*w,b*h);x.lineTo(ox+cc*w,dd*h);x.stroke();}
+    if(idx===1&&d){x.font='bold 13px system-ui';x.textAlign='center';for(let s=0;s<64;s++){const [px,py]=applyH((s&7)+.5,(s>>3)+.5);x.fillStyle=d[s]>thr()?'#ff4a3a':'rgba(255,255,255,.75)';x.fillText(d[s].toFixed(0),ox+px*w,py*h+4);}}});}
+  x.textAlign='left';x.fillStyle='#e8e6e1';x.font='bold 15px system-ui';
+  x.fillText('BEFORE (last confirmed position)',8,h+22);x.fillText('NOW',w+18,h+22);
+  x.font='13px ui-monospace,monospace';x.fillStyle='#bbb';
+  const top=d?Array.from(d).map((v,i)=>[sqName(i),v]).sort((a,b)=>b[1]-a[1]).slice(0,6).map(a=>a[0]+':'+a[1].toFixed(0)).join(' '):'-';
+  [`state=${state} mode=${mode} threshold=${thr()} noise=${noiseLvl.toFixed(1)} still=${stillCount} activity=${camActivity} synced=${!!ref&&!needResync}`,
+   `top changes: ${top}   last read: ${lastAnalysis||'never'}`,`moves: ${hist.map(h=>h.san).join(' ')||'-'}`,`status: ${$('status').textContent.slice(0,110)}`,`${navigator.userAgent.slice(0,120)}`]
+   .forEach((l,i)=>x.fillText(l,8,h+46+i*20));
+  c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='chess-snapshot-'+Date.now()+'.jpg';document.body.appendChild(a);a.click();a.remove();
+    setStatus('📸 Snapshot saved to your Downloads. Please attach it in the chat with Claude.','good');},'image/jpeg',0.88);}
 
 function drawPoly(f,r,fill,stroke){
   const W=overlay.width,Hh=overlay.height,pts=[[f,r],[f+1,r],[f+1,r+1],[f,r+1]].map(([X,Y])=>{const [x,y]=applyH(X,Y);return [x*W,y*Hh];});
@@ -741,14 +778,28 @@ function tick(){
     if(H&&sourceReady()&&!sampleIdx)rebuild();
     if(mode==='live'&&sampleIdx&&sourceReady()){
       const data=grab(),feat=extract(data);
+      // motion: compare with the previous frame, against this camera's own noise level (measured continuously)
       if(prevFeat){const md=Math.max(...sqDiff(feat,prevFeat)),T=thr();
-        if(md<Math.max(5,T*0.4))stillCount++;else{stillCount=0;if(md>T*0.8)sawMotion=true;}}
-      prevFeat=feat;lastFeat=feat;
-      if(captureNext){captureNext=false;ref=feat.slice();needResync=false;}
+        mdHist.push(md);if(mdHist.length>60)mdHist.shift();
+        noiseLvl=Array.from(mdHist).sort((a,b)=>a-b)[Math.floor(mdHist.length*0.3)]||5;
+        const stillThr=Math.max(5,noiseLvl*1.6+2),moveThr=Math.max(T*0.8,noiseLvl*3);
+        if(md<stillThr)stillCount++;else{stillCount=0;if(md>moveThr){sawMotion=true;lastMotionAt=Date.now();}}
+        camActivity=md>moveThr?'move':stillCount>=4?'still':'settling';}
+      prevFeat=feat;
+      // average the last 3 frames: removes most sensor noise from the picture the app compares
+      featHist.push(feat);if(featHist.length>3)featHist.shift();
+      if(stillCount>=2&&featHist.length===3){const av=new Uint8Array(feat.length);for(let k=0;k<feat.length;k++)av[k]=(featHist[0][k]+featHist[1][k]+featHist[2][k])/3;lastFeat=av;}else lastFeat=feat;
+      if(captureNext&&stillCount>=2){captureNext=false;ref=lastFeat.slice();refShot=snapFrame();needResync=false;}
       updateHeat();drawRect(data);
       if(++renderTick%4===0&&(state==='human'||state==='remove'))renderBoard(curHeat);
       if(sawMotion&&stillCount===7&&$('chkAuto').checked&&!$('modal').classList.contains('show')){sawMotion=false;analyse(false,false);}
       else if(waitKey&&stillCount===20&&!$('modal').classList.contains('show'))analyse(false,false); // second look while still unsure
+      // backup trigger for noisy cameras that never look perfectly still: the same squares stay changed for ~1.5 s
+      else if(++stableTick%12===0&&ref&&!needResync&&$('chkAuto').checked&&(state==='human'||state==='remove')&&!$('modal').classList.contains('show')){
+        const d=adjDiff(lastFeat,ref),T=thr(),key=[];for(let k=0;k<64;k++)if(d[k]>T)key.push(k);const ks=key.join(',');
+        if(key.length&&key.length<=6&&ks===stableKey&&ks!==stableDone){stableDone=ks;analyse(false,false);}
+        stableKey=ks;}
+      showCamState();
       updateButtons();
     }else if(mode==='photo'&&sampleIdx&&photoDirty){
       photoDirty=false;const data=grab();lastFeat=extract(data);updateHeat();drawRect(data);
@@ -795,10 +846,11 @@ $('btnReread').onclick=()=>{photoDirty=true;photoRead=true;};
 $('btnCorners').onclick=()=>{corners=[];H=null;sampleIdx=null;setStep(2);setStatus('Tap the 4 outer corners: a1, h1, h8, a8.');};
 $('btnStart').onclick=()=>{speak(' ');beep(true);startGame();};
 $('btnDone').onclick=()=>{if(state==='remove')confirmRemoval();else if(state==='human')analyse(true,false);};
-$('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
+$('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=snapFrame();stableKey='';stableDone='';waitKey=null;needResync=false;sawMotion=false;curHeat=null;$('cands').innerHTML='';
   if(state==='remove'){removeSq=-1;state='human';engineCard();}
   setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
+$('btnSnap').onclick=saveSnapshot;
 $('btnHint').onclick=hint;
 $('btnNew').onclick=()=>{state='idle';removeSq=-1;lastEngine=null;lastEngineTx=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
   setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
