@@ -124,6 +124,8 @@
   .players{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:16px}
   .players .on{color:var(--accent)}
   .clocks{display:flex;gap:10px;margin:10px 0}
+  .setupBox{background:#20242b;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+  body.playing:not(.showSet) #setupBox{display:none}
   .clk{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:#20242b;border:2px solid #3a3f49;min-width:0}
   .clk.on{border-color:var(--accent);background:#2e2a1e}
   .clk.low .clkTime{color:var(--bad)} .clk.flag{border-color:var(--bad);background:#3a2020}
@@ -192,6 +194,18 @@
     <div id="camState" class="hide"></div>
     <div id="status">Start the live camera (or take a photo) and mark the board corners. You can also play without a camera by tapping moves on the board below.</div>
     <div id="cands"></div>
+    <div class="row setupBox" id="setupBox" style="justify-content:center">
+      <label>I play <select id="selColor"><option value="1">White</option><option value="-1">Black</option></select></label>
+      <label>⏱ Timer <span id="timerSlot"></span></label>
+      <span id="timerCustom" class="hide" style="display:inline-flex;gap:6px;align-items:center"><input id="tMin" type="number" min="0.25" max="600" step="0.25" value="10" style="width:70px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> min + <input id="tInc" type="number" min="0" max="120" step="1" value="0" style="width:60px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> s</span>
+      <label>Engine <select id="selLevel">
+        <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
+        <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
+      </select></label>
+      <label>Your name <input id="yourName" placeholder="You" maxlength="24" style="width:110px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px 9px;font:inherit"></label>
+      <label>Names <select id="selNames"><option value="indian" selected>Elephant · Camel · Horse</option><option value="intl">Rook · Bishop · Knight</option></select></label>
+      <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
+    </div>
     <div class="row" style="justify-content:center">
       <button id="btnStart" class="primary big">Start game</button>
       <button id="btnDone" class="big" disabled>✓ My move is done</button>
@@ -207,19 +221,8 @@
       <button id="btnSync" disabled title="Use when the real board matches the screen but the app is confused">⟳ Re-sync board</button>
       <button id="btnNew">New game</button>
       <button id="btnPause" class="hide">⏸ Pause clock</button>
+      <button id="btnSet" class="hide">⚙ Settings</button>
       <button id="btnSnap" title="Saves what the camera saw, to send to Claude">📸 Save snapshot</button>
-    </div>
-    <div class="row" style="justify-content:center">
-      <label>I play <select id="selColor"><option value="1">White</option><option value="-1">Black</option></select></label>
-      <label>⏱ Timer <span id="timerSlot"></span></label>
-      <span id="timerCustom" class="hide" style="display:inline-flex;gap:6px;align-items:center"><input id="tMin" type="number" min="0.25" max="600" step="0.25" value="10" style="width:70px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> min + <input id="tInc" type="number" min="0" max="120" step="1" value="0" style="width:60px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> s</span>
-      <label>Engine <select id="selLevel">
-        <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
-        <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
-      </select></label>
-      <label>Your name <input id="yourName" placeholder="You" maxlength="24" style="width:110px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px 9px;font:inherit"></label>
-      <label>Names <select id="selNames"><option value="indian" selected>Elephant · Camel · Horse</option><option value="intl">Rook · Bishop · Knight</option></select></label>
-      <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
     </div>
     <div id="moves"></div>
     <details>
@@ -492,6 +495,7 @@ function castleButtons(){
     b.onclick=()=>{if(state!=='human')return;const mm=legal(game).find(x=>x.f===m.f&&x.t===m.t);if(mm)commitHuman(mm);};row.appendChild(b);});}
 function updateButtons(){
   castleButtons();
+  $('btnSet').classList.toggle('hide',state==='idle');if(state==='idle')document.body.classList.remove('showSet');
   if(clock)renderClocks();
   document.body.classList.toggle('playing',state!=='idle');document.body.classList.toggle('nocam',mode==='none');
   $('btnPhotoPlay').classList.toggle('hide',!(state!=='idle'&&mode!=='live'));
@@ -1034,6 +1038,7 @@ $('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=s
   if(state==='remove'){removeSq=-1;state='human';engineCard();}
   setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
+$('btnSet').onclick=()=>{document.body.classList.toggle('showSet');if(document.body.classList.contains('showSet'))$('setupBox').scrollIntoView({behavior:'smooth',block:'center'});};
 $('btnPause').onclick=()=>{if(!clock||state==='over')return;if(clock.running){clock.pause();setStatus('⏸ Clock paused. Tap ▶ Resume clock to continue.');}else{clock.resume();setStatus('Clock running.');}renderClocks();};
 $('btnSnap').onclick=saveSnapshot;
 $('btnHint').onclick=hint;
