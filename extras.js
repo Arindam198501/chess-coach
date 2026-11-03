@@ -94,7 +94,7 @@ class Clock{
   resume(){this.held=false;if(this.running||!this.side||this.flagged)return;this.running=true;this.last=this.now();clearInterval(this.iv);this.iv=setInterval(()=>this.tick(),100);this.onTick&&this.onTick();}
   stop(){this.pauseRaw();this.side=0;this.onTick&&this.onTick();}
   tick(){const r=this.left(this.side);
-    if(r<=10000&&!this.warned[this.side]&&this.tc.base>30000){this.warned[this.side]=1;try{window.CCApp.beep(false);}catch(e){}}
+    if(r<=10000&&!this.warned[this.side]&&this.tc.base>30000){this.warned[this.side]=1;try{window.CCApp.sfx('lowtime');}catch(e){}}
     this.onTick&&this.onTick();
     if(r<=0&&!this.flagged){this.flagged=true;const s=this.side;this.pauseRaw();this.onFlag&&this.onFlag(s);}}
   times(){return {w:this.left(1),b:this.left(-1)};}
@@ -191,11 +191,11 @@ const Two={g:null,pos:null,view:'setup',
     this.view='game';this.drawOffer=false;this.lastAt=Date.now();this.click=mover(()=>this.g.result==='*'?this.pos:null,m=>this.play(m),()=>this.draw());this.draw();},
   play(m){if(this.clock){if(this.paused){this.paused=false;this.clock.held=false;}this.clock.moved(this.pos.turn);}
     const now=Date.now();this.g.ms=this.g.ms||[];this.g.ms[this.g.uci.length]=this.lastAt?now-this.lastAt:null;this.lastAt=now;
-    const s=A.san(this.pos,m);this.stack.push({m,u:make(this.pos,m)});this.g.moves.push(s);this.g.uci.push(uciOf(m));this.drawOffer=false;
+    const snd=A.moveSound(this.pos,m),s=A.san(this.pos,m);this.stack.push({m,u:make(this.pos,m)});this.g.moves.push(s);this.g.uci.push(uciOf(m));this.drawOffer=false;
     const st=status(this.pos);
     if(st==='mate')this.g.result=this.pos.turn===1?'0-1':'1-0';else if(st==='stalemate'||st==='fifty'||st==='material')this.g.result='1/2-1/2';
     if(this.g.result!=='*'&&this.clock)this.clock.stop();
-    this.saveClock();CCX.saveGame(this.g);A.beep(true);this.draw();},
+    this.saveClock();CCX.saveGame(this.g);A.sfx(snd);if(this.g.result!=='*')setTimeout(()=>A.sfx('end'),350);this.draw();},
   rateLine(){const sv=CCX.games().find(x=>x.id===this.g.id)||this.g;
     if(sv.rated)return Object.values(sv.rated).map(c=>`${esc(c.name)}: ${c.before} → ${c.after} (${c.d>=0?'+':''}${c.d})`).join(' · ');
     if(sv.unrated)return 'Unrated game ('+esc(sv.unrated)+')';return '';},
@@ -209,7 +209,7 @@ const Two={g:null,pos:null,view:'setup',
   undo(){if(!this.stack.length)return;this.g.unrated='take-back';const x=this.stack.pop();unmake(this.pos,x.m,x.u);this.g.moves.pop();this.g.uci.pop();this.g.result='*';delete this.g.why;
     if(this.clock){this.clock.flagged=false;if(this.clock.running)this.clock.start(this.pos.turn);else this.clock.side=this.pos.turn;}
     this.saveClock();CCX.saveGame(this.g);this.click.clear();this.draw();},
-  end(res,why){this.g.result=res;this.g.why=why;if(this.clock)this.clock.stop();this.saveClock();CCX.saveGame(this.g);this.draw();},
+  end(res,why){A.sfx('end');this.g.result=res;this.g.why=why;if(this.clock)this.clock.stop();this.saveClock();CCX.saveGame(this.g);this.draw();},
   draw(){
     const g=this.g,pos=this.pos,turnW=pos.turn===1,st=status(pos),over=g.result!=='*';
     const flip=LS.get('ccc_2p_flip',true)?!turnW&&!over:false;
@@ -391,16 +391,17 @@ const Learn={
   userMove(m){
     const s=this.s,u=uciOf(m);this.click.clear();this.arrows=null;
     if(s.type==='drill'){
-      if(u===s.moves[this.mi]){make(this.pos,m);this.last=m;this.mi++;this.fb='✓ Correct';this.fbc='good';A.beep(true);
+      if(u===s.moves[this.mi]){A.sfx(A.moveSound(this.pos,m));make(this.pos,m);this.last=m;this.mi++;this.fb='✓ Correct';this.fbc='good';
         setTimeout(()=>{this.autoReply();this.draw();},350);this.draw();}
-      else{this.fb=`✗ ${esc(A.san(this.pos,m))} isn’t the move in this line. Try again (💡 for a hint).`;this.fbc='bad';A.beep(false);this.draw();}
+      else{this.fb=`✗ ${esc(A.san(this.pos,m))} isn’t the move in this line. Try again (💡 for a hint).`;this.fbc='bad';A.sfx('wrong');this.draw();}
       return;}
     // puzzle
     const sol=s.solution||[];
     if(!this.engineMode&&u===sol[this.mi])return this.acceptPuzzleMove(m,false);
     this.checkWithEngine(m);},
   acceptPuzzleMove(m,viaEngine){
-    const s=this.s,sanStr=A.san(this.pos,m);make(this.pos,m);this.last=m;this.mi++;A.beep(true);
+    const s=this.s,sanStr=A.san(this.pos,m),snd=A.moveSound(this.pos,m);make(this.pos,m);this.last=m;this.mi++;
+    const st0=status(this.pos);A.sfx(st0==='mate'||this.mi>=(s.solution||[]).length?'correct':snd);
     const st=status(this.pos);
     if(st==='mate'||this.mi>=(s.solution||[]).length){this.solved=true;this.fb=st==='mate'?`✅ ${esc(sanStr)}: checkmate! Solved.`:`✅ ${esc(sanStr)}: correct, puzzle solved!`;this.fbc='good';this.draw();return;}
     this.fb=`✓ ${esc(sanStr)}: good. Now the opponent replies…`;this.fbc='good';this.busy=true;this.draw();
@@ -408,7 +409,7 @@ const Learn={
   opponentReply(){
     const s=this.s,sol=s.solution||[];
     const finish=m=>{if(!m){this.busy=false;this.solved=true;this.fb='✅ Solved!';this.fbc='good';this.draw();return;}
-      const sanStr=A.san(this.pos,m);make(this.pos,m);this.last=m;this.mi++;this.busy=false;
+      const sanStr=A.san(this.pos,m);A.sfx(A.moveSound(this.pos,m));make(this.pos,m);this.last=m;this.mi++;this.busy=false;
       if(this.mate&&this.mateLeft)this.mateLeft--;
       this.fb=`Opponent played ${esc(sanStr)}. Your move.`;this.fbc='';
       if(this.mi>=sol.length){this.solved=true;this.fb='✅ Solved!';this.fbc='good';}
@@ -419,7 +420,7 @@ const Learn={
   // a move that differs from the stored answer: let Stockfish judge it
   checkWithEngine(m){
     const s=this.s,sanStr=A.san(this.pos,m);
-    if(!A.SF.ready){this.fb=`✗ ${esc(sanStr)} is not the answer. Try again.`;this.fbc='bad';A.beep(false);this.draw();return;}
+    if(!A.SF.ready){this.fb=`✗ ${esc(sanStr)} is not the answer. Try again.`;this.fbc='bad';A.sfx('wrong');this.draw();return;}
     const p=clonePos(this.pos);const u=make(p,m);
     if(status(p)==='mate')return this.acceptPuzzleMove(m,true);
     this.busy=true;this.fb='Checking your move…';this.fbc='';this.draw();
@@ -429,7 +430,7 @@ const Learn={
       :Promise.all([A.SF.search(fenOf(this.pos),0,1200),A.SF.search(fenOf(p),0,1200)]).then(([best,after])=>{const bs=best.score,as=-after.score;return as>=bs-60||(bs>300&&as>300&&as>=bs-150);});
     judge.then(ok=>{this.busy=false;
       if(ok){this.engineMode=true;this.acceptPuzzleMove(m,true);}
-      else{this.fb=`✗ ${esc(sanStr)} isn’t good enough here. Try again.`;this.fbc='bad';A.beep(false);this.draw();}});},
+      else{this.fb=`✗ ${esc(sanStr)} isn’t good enough here. Try again.`;this.fbc='bad';A.sfx('wrong');this.draw();}});},
   hint(){const s=this.s;let u=s.type==='drill'?s.moves[this.mi]:(!this.engineMode?(s.solution||[])[this.mi]:null);
     if(!u&&this.lastHintFen===fenOf(this.pos))return;
     const show=u=>{const f=sqi(u.slice(0,2));this.marks={[f]:'#5a5aff'};this.fb=s.hint&&s.type==='puzzle'&&this.mi===0?'💡 '+s.hint:'💡 Move the highlighted piece.';this.fbc='';this.draw();};
