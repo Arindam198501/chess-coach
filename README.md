@@ -85,11 +85,22 @@ Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last
   Every puzzle answer was verified with Stockfish 19. If you find a different move that also works, the app asks Stockfish and accepts it. Progress is saved on your device.
 - **📜 History:** every game (vs the engine and two-player) is saved automatically, with names, date and result. Tap a game to replay it move by move, copy it as PGN, or continue an unfinished two-player game. Tap **☑ Select / delete** to tick individual games or **Select all**, then delete them. Deleting asks for a second tap to confirm.
 
+## Game review: learn from every game
+
+Every finished game (vs the engine or two players) is analysed automatically by Stockfish in the background. Open it from **📊 Game review** at the end of the game, or from **📜 History**.
+
+- **Accuracy %** and counts of **blunders ??, mistakes ? and inaccuracies ?!**, plus an evaluation graph of the whole game.
+- **What to learn from this game:** the main problems, each with a concrete tip and a **Practise →** link to the matching lesson.
+- **Things you should not have done:** blunders and broken opening principles (queen out early, same piece moved twice, king left in the centre, slow development, edge-pawn moves).
+- **Key moments:** the 5 biggest errors. Each explains what went wrong in plain words (piece left unprotected, allowed a fork, allowed or missed checkmate, missed free material, fell for or missed a tactic) and shows the better move. **🧩 Find the better move** lets you retry the position.
+- Step through the game: every move is coloured by quality, and the best move is shown as a green arrow.
+- **📈 My patterns** (in History): your recurring mistakes across all games, which phase they happen in (opening, middlegame or endgame), which pieces you leave hanging, your opening habits, an accuracy trend and your **top 3 things to work on**.
+- **🧩 From your games** (in Learn): every position where you went wrong becomes a puzzle.
+
 ## If the camera doesn't read your moves
 
 During a game, the line above the move card shows what the camera is doing ("Watching…", "Movement seen…", "reading…"). If a move isn't recognised, tap **📸 Save snapshot**. It saves an image of what the camera compared, which you can send for diagnosis.
 
 ## Coming next
 
-- **Stage 2:** warnings right after inaccuracies, mistakes and blunders (with a take-back option), and a full review after each game.
-- **Stage 3:** saved mistake history, puzzles built from your mistakes, and a stats dashboard.
+- Live warnings during the game, right after a mistake (with a take-back option).

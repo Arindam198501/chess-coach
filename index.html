@@ -124,6 +124,22 @@
   .players{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:16px}
   .players .on{color:var(--accent)}
   .clocks{display:flex;gap:10px;margin:10px 0}
+  h3{font-size:16px;margin:16px 0 6px}
+  .stats{display:flex;gap:8px;flex-wrap:wrap}
+  .stats>div{flex:1;min-width:70px;background:#20242b;border-radius:10px;padding:8px;text-align:center}
+  .stats b{display:block;font-size:24px} .stats span{font-size:12px;color:var(--muted)}
+  .lessons{padding-left:20px;line-height:1.5} .lessons li{margin:6px 0}
+  button.mini{padding:4px 10px;font-size:13px}
+  .moment{border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+  .mhead{padding:8px 10px;background:#20242b;font-size:14px}
+  .mbody{display:flex;gap:10px;padding:10px;align-items:flex-start;flex-wrap:wrap}
+  .cboard.mini{width:46%;min-width:150px;max-width:220px;margin:0;border-width:2px}
+  .cboard.mini .sq{font-size:clamp(14px,4.3vw,24px)} .cboard.mini .coord{display:none}
+  .mtext{flex:1;min-width:150px;font-size:14.5px;line-height:1.5}
+  .pbar{height:10px;background:#2a2e36;border-radius:6px;overflow:hidden}.pbar div{height:100%;background:var(--accent);transition:width .3s}
+  .bar{display:grid;grid-template-columns:minmax(110px,42%) 1fr 34px;gap:8px;align-items:center;margin:6px 0;font-size:13.5px}
+  .bar>div{height:10px;background:#2a2e36;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+  .bar b{text-align:right}
   .setupBox{background:#20242b;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
   body.playing:not(.showSet) #setupBox{display:none}
   .clk{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:#20242b;border:2px solid #3a3f49;min-width:0}
@@ -221,6 +237,7 @@
       <button id="btnSync" disabled title="Use when the real board matches the screen but the app is confused">⟳ Re-sync board</button>
       <button id="btnNew">New game</button>
       <button id="btnPause" class="hide">⏸ Pause clock</button>
+      <button id="btnReview" class="hide primary">📊 Game review</button>
       <button id="btnSet" class="hide">⚙ Settings</button>
       <button id="btnSnap" title="Saves what the camera saw, to send to Claude">📸 Save snapshot</button>
     </div>
@@ -495,7 +512,7 @@ function castleButtons(){
     b.onclick=()=>{if(state!=='human')return;const mm=legal(game).find(x=>x.f===m.f&&x.t===m.t);if(mm)commitHuman(mm);};row.appendChild(b);});}
 function updateButtons(){
   castleButtons();
-  $('btnSet').classList.toggle('hide',state==='idle');if(state==='idle')document.body.classList.remove('showSet');
+  $('btnSet').classList.toggle('hide',state==='idle');$('btnReview').classList.toggle('hide',!(state==='over'&&hist.length>=4));if(state==='idle')document.body.classList.remove('showSet');
   if(clock)renderClocks();
   document.body.classList.toggle('playing',state!=='idle');document.body.classList.toggle('nocam',mode==='none');
   $('btnPhotoPlay').classList.toggle('hide',!(state!=='idle'&&mode!=='live'));
@@ -509,7 +526,8 @@ function updateButtons(){
   $('btnTurn').classList.toggle('hide',!(H&&corners.length===4));}
 
 // ================= game flow =================
-function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});saveGame();return s;}
+let lastPlyAt=0;
+function pushMove(m){const s=san(game,m);const u=make(game,m);const now=Date.now();hist.push({m,u,san:s,ms:lastPlyAt?now-lastPlyAt:null});lastPlyAt=now;saveGame();return s;}
 let gameId=null,gameResult='*',gameDate=null,gameWhy='',clock=null,gameTC=null,lastMoveDelay=0;
 function renderClocks(){const el=$('playClocks');if(!clock){el.classList.add('hide');$('btnPause').classList.add('hide');return;}
   el.classList.remove('hide');const me=yourName(),eng='Engine';
@@ -526,7 +544,7 @@ function yourName(){return ($('yourName').value||'').trim()||'You';}
 function saveGame(){
   if(!window.CCX||!gameId||!hist.length)return;
   const eng='Stockfish '+($('selLevel').value==='0'?'(full)':'~'+$('selLevel').value),me=yourName();
-  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,tc:gameTC?gameTC.label:null,why:gameWhy||undefined,
+  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,tc:gameTC?gameTC.label:null,why:gameWhy||undefined,human:humanColor,ms:hist.map(h=>h.ms),
     moves:hist.map(h=>h.san),uci:hist.map(h=>FILES[h.m.f&7]+((h.m.f>>3)+1)+FILES[h.m.t&7]+((h.m.t>>3)+1)+(h.m.p?' pnbrq'[h.m.p]:''))});}
 function gameOverCheck(){
   const r=gameOverCheck0();if(r&&clock)clock.stop();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
@@ -544,7 +562,7 @@ function gameOverCheck0(){
 
 function startGame(){
   game=startPos();hist=[];removeSq=-1;lastEngine=null;selected=-1;hintMove=null;lastEval='';
-  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();gameWhy='';
+  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();gameWhy='';lastPlyAt=Date.now();
   if(clock)clock.stop();gameTC=window.CCClock?CCClock.parseTC($('selTimer').value,$('tMin'),$('tInc')):null;
   clock=gameTC?new CCClock.Clock(gameTC,onFlag,renderClocks):null;if(clock)clock.start(1);
   humanColor=+$('selColor').value;rebuild();
@@ -1038,6 +1056,7 @@ $('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=s
   if(state==='remove'){removeSq=-1;state='human';engineCard();}
   setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
+$('btnReview').onclick=()=>{if(!window.CCLearn||!gameId)return;CCLearn.show('hist');CCLearn.Hist.open(gameId,0);};
 $('btnSet').onclick=()=>{document.body.classList.toggle('showSet');if(document.body.classList.contains('showSet'))$('setupBox').scrollIntoView({behavior:'smooth',block:'center'});};
 $('btnPause').onclick=()=>{if(!clock||state==='over')return;if(clock.running){clock.pause();setStatus('⏸ Clock paused. Tap ▶ Resume clock to continue.');}else{clock.resume();setStatus('Clock running.');}renderClocks();};
 $('btnSnap').onclick=saveSnapshot;
@@ -1059,6 +1078,7 @@ window.__ccc={get clock(){return clock&&{w:clock.left(1),b:clock.left(-1),side:c
 </script>
 <script src="courses.js"></script>
 <script src="extras.js"></script>
+<script src="review.js"></script>
 <script>
 (function(){const slot=document.getElementById('timerSlot');let v='none';try{v=JSON.parse(localStorage.getItem('ccc_timer')||'"none"');}catch(e){}
   slot.innerHTML=CCClock.timerSelectHtml('selTimer',v);const sel=document.getElementById('selTimer'),cu=document.getElementById('timerCustom');
