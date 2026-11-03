@@ -45,6 +45,10 @@ Then open **http://localhost:8000** in Chrome. Double-clicking `index.html` open
 6. The engine replies **on the screen board**: a green card says e.g. **"♜ Elephant h1 → h5"**, a green arrow shows it, and the voice reads it out. Nothing to do on your real board. Just make your next move.
 7. **If the engine captures one of your pieces,** the card says e.g. "Remove your Camel from c4". Take it off your real board and the camera notices, or tap ✓ Piece removed.
 
+**Timer:** choose a time control under **⏱ Timer**: bullet, blitz, rapid or classical, with or without increment, or **Custom** (minutes + seconds per move). With the camera, your clock stops when your hand leaves the board, not when the app finishes reading. Your clock also waits while you remove a piece the engine captured. **⏸ Pause clock** pauses the game. If a flag falls, the game ends (a draw if the other side can't checkmate).
+
+**Castling:** when castling is legal for you, a **🏰 castle** button appears. With the camera: castle on your real board (king and rook) first, then tap the button to confirm.
+
 **Piece names:** the default is Elephant · Camel · Horse. Switch to Rook · Bishop · Knight under **Names**.
 
 **If the camera misreads a move,** tap one of the suggested moves or tap the move on the screen board. If the real board matches the screen but the app seems confused, press **⟳ Re-sync board**.
@@ -70,7 +74,7 @@ Other buttons: **💡 Hint** suggests a move. **↶ Take back** undoes your last
 
 ## Other tabs
 
-- **👥 2 Players:** two people play on one screen (pass-and-play). Both players enter their names first. You can undo, offer a draw or resign, and optionally turn the board around after every move.
+- **👥 2 Players:** two people play on one screen (pass-and-play). Both players enter their names first and can pick a timer. You get castling buttons, undo, pause, draw offer and resign, and the board can turn around after every move.
 - **📚 Learn:** courses for stronger players:
   - **Openings repertoire:** Ruy Lopez, Italian, Najdorf, QGD, King's Indian, Caro-Kann and London. Each has an explained main line, then a drill where you play your side from memory.
   - **Middlegame strategy:** outposts, open files and the 7th rank, good and bad bishops, isolated queen's pawn, and the Greek gift sacrifice.

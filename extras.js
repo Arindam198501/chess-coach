@@ -60,6 +60,53 @@ function mover(getPos,onMove,redraw){
   h.sel=()=>sel;h.targets=()=>{const pos=getPos();return sel>=0&&pos?legal(pos).filter(m=>m.f===sel).map(m=>m.t):[];};h.clear=()=>{sel=-1;};
   return h;}
 
+
+// ================= CHESS CLOCK (shared by Play and 2 Players) =================
+const TIMERS=[['none','No timer'],['1+0','Bullet · 1 min'],['2+1','Bullet · 2 min + 1 s'],['3+0','Blitz · 3 min'],['3+2','Blitz · 3 min + 2 s'],
+  ['5+0','Blitz · 5 min'],['5+3','Blitz · 5 min + 3 s'],['10+0','Rapid · 10 min'],['10+5','Rapid · 10 min + 5 s'],['15+10','Rapid · 15 min + 10 s'],
+  ['30+0','Classical · 30 min'],['30+20','Classical · 30 min + 20 s'],['60+30','Classical · 60 min + 30 s'],['custom','Custom…']];
+// "5+3" -> {base:300000, inc:3000}; custom uses the minutes / seconds inputs
+function parseTC(v,minEl,incEl){
+  if(!v||v==='none')return null;
+  let m,i;if(v==='custom'){m=parseFloat(minEl&&minEl.value);i=parseFloat(incEl&&incEl.value)||0;}else[m,i]=v.split('+').map(Number);
+  if(!(m>0))return null;m=Math.min(m,600);i=Math.max(0,Math.min(i,120));
+  return {base:Math.round(m*60000),inc:Math.round(i*1000),label:`${+m.toFixed(2)}+${+i.toFixed(1)}`};}
+function fmtClock(ms){ms=Math.max(0,ms);
+  if(ms<10000)return (Math.floor(ms/100)/10).toFixed(1);
+  const t=Math.ceil(ms/1000),h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;
+  return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0');}
+class Clock{
+  // t[1]=White ms, t[-1]=Black ms
+  constructor(tc,onFlag,onTick,times){this.tc=tc;this.inc=tc.inc;this.t={1:tc.base,'-1':tc.base};if(times){this.t[1]=times.w;this.t[-1]=times.b;}
+    this.side=0;this.running=false;this.last=0;this.onFlag=onFlag;this.onTick=onTick;this.iv=null;this.flagged=false;this.warned={};}
+  now(){return performance.now();}
+  left(side){let v=this.t[side];if(this.running&&this.side===side)v-=this.now()-this.last;return Math.max(0,v);}
+  start(side){this.pauseRaw();this.side=side;this.resume();}
+  // the player `side` finished their move `earlierMs` ago (e.g. the camera noticed the hand leaving a moment before reading the move)
+  moved(side,earlierMs){
+    if(this.flagged)return;
+    const now=this.now(),end=now-Math.max(0,Math.min(earlierMs||0,4000));
+    if(this.running&&this.side===side){this.t[side]=Math.max(0,this.t[side]-Math.max(0,end-this.last))+this.inc;}
+    this.side=-side;this.last=now;if(!this.running&&!this.held)this.resume();this.onTick&&this.onTick();}
+  pauseRaw(){if(this.running){this.t[this.side]=this.left(this.side);this.running=false;}clearInterval(this.iv);this.iv=null;}
+  pause(){this.pauseRaw();this.held=true;this.onTick&&this.onTick();}
+  resume(){this.held=false;if(this.running||!this.side||this.flagged)return;this.running=true;this.last=this.now();clearInterval(this.iv);this.iv=setInterval(()=>this.tick(),100);this.onTick&&this.onTick();}
+  stop(){this.pauseRaw();this.side=0;this.onTick&&this.onTick();}
+  tick(){const r=this.left(this.side);
+    if(r<=10000&&!this.warned[this.side]&&this.tc.base>30000){this.warned[this.side]=1;try{window.CCApp.beep(false);}catch(e){}}
+    this.onTick&&this.onTick();
+    if(r<=0&&!this.flagged){this.flagged=true;const s=this.side;this.pauseRaw();this.onFlag&&this.onFlag(s);}}
+  times(){return {w:this.left(1),b:this.left(-1)};}
+}
+// renders two clock faces into el: [{side,label}] in display order
+function clockHtml(clk,faces){
+  return faces.map(f=>{const ms=clk.left(f.side),on=clk.running&&clk.side===f.side;
+    return `<div class="clk ${on?'on':''} ${ms<=10000?'low':''} ${clk.flagged&&clk.side===f.side?'flag':''}"><span class="clkName">${f.label}</span><span class="clkTime">${fmtClock(ms)}</span></div>`;}).join('');}
+function timerSelectHtml(id,value){return `<select id="${id}">${TIMERS.map(([v,l])=>`<option value="${v}" ${v===value?'selected':''}>${l}</option>`).join('')}</select>`;}
+function hasMatingMaterial(pos,color){let n=0,minor=0;for(const x of pos.b){if(!x||Math.sign(x)!==color||Math.abs(x)===6)continue;n++;if(Math.abs(x)===2||Math.abs(x)===3)minor++;}
+  return !(n===0||(n===1&&minor===1));}
+window.CCClock={Clock,TIMERS,parseTC,fmtClock,clockHtml,timerSelectHtml,hasMatingMaterial};
+
 // ---------------- History storage ----------------
 const CCX=window.CCX={
   newId(){return 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);},
@@ -69,7 +116,8 @@ const CCX=window.CCX={
 function pgnOf(g){
   const d=new Date(g.date||Date.now());const ds=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
   let mv='';g.moves.forEach((m,i)=>{if(i%2===0)mv+=(i/2+1)+'. ';mv+=m+' ';});
-  return `[Event "${g.type==='engine'?'Game vs engine':'Two-player game'}"]\n[Site "Chess Cam Coach"]\n[Date "${ds}"]\n[White "${g.white}"]\n[Black "${g.black}"]\n[Result "${g.result}"]\n\n${mv}${g.result}\n`;}
+  const tc=g.tc?`[TimeControl "${Math.round(parseFloat(g.tc)*60)}+${parseFloat(g.tc.split('+')[1])||0}"]\n`:'';
+  return `[Event "${g.type==='engine'?'Game vs engine':'Two-player game'}"]\n[Site "Chess Cam Coach"]\n[Date "${ds}"]\n[White "${g.white}"]\n[Black "${g.black}"]\n[Result "${g.result}"]\n${tc}${g.why?`[Termination "${g.why}"]\n`:''}\n${mv}${g.result}\n`;}
 function copyText(t,btn){
   const done=()=>{const o=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=o,1500);};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done,()=>fallback());else fallback();
@@ -80,6 +128,7 @@ function resultText(g){
 // ---------------- Tabs ----------------
 let curView='play';
 function show(v){
+  if(v!=='two'&&Two.clock&&Two.clock.running){Two.clock.pause();Two.saveClock();if(Two.g)CCX.saveGame(Two.g);}
   curView=v;
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $('viewPlay').classList.toggle('hide',v!=='play');
@@ -99,50 +148,78 @@ const Two={g:null,pos:null,view:'setup',
       <p class="muted small">Pass the phone or laptop between moves. Every game is saved in History.</p>
       <label style="display:block;margin:12px 0 4px">♔ White player’s name</label><input class="txt" id="pW" maxlength="24" placeholder="e.g. Arindam" value="${esc(n.w)}">
       <label style="display:block;margin:12px 0 4px">♚ Black player’s name</label><input class="txt" id="pB" maxlength="24" placeholder="e.g. Rahul" value="${esc(n.b)}">
+      <label style="display:block;margin:12px 0 4px">⏱ Timer (each player)</label>${CCClock.timerSelectHtml('pTimer',LS.get('ccc_2p_timer','none'))}
+      <span id="pCustom" class="${LS.get('ccc_2p_timer','none')==='custom'?'':'hide'}" style="display:inline-flex;gap:8px;align-items:center;margin-left:8px">
+        <input class="txt" id="pMin" type="number" min="0.25" max="600" step="0.25" value="${LS.get('ccc_2p_cmin',10)}" style="width:80px"> min +
+        <input class="txt" id="pInc" type="number" min="0" max="120" step="1" value="${LS.get('ccc_2p_cinc',0)}" style="width:70px"> s per move</span>
       <label style="margin-top:12px"><input type="checkbox" id="pFlip" ${fl?'checked':''}> Turn the board around after each move (for sitting opposite each other)</label>
       <div class="fb bad" id="pErr"></div>
       <div class="row" style="justify-content:center"><button class="primary big" id="pStart">Start game</button></div></div>
       ${this.unfinishedHtml()}`;
+    $('pTimer').onchange=()=>$('pCustom').classList.toggle('hide',$('pTimer').value!=='custom');
     $('pStart').onclick=()=>{
       const w=$('pW').value.trim(),b=$('pB').value.trim();
+      const tv=$('pTimer').value,tc=CCClock.parseTC(tv,$('pMin'),$('pInc'));
+      if(tv==='custom'&&!tc){$('pErr').textContent='Please enter the minutes for the custom timer.';return;}
+      LS.set('ccc_2p_timer',tv);if(tv==='custom'){LS.set('ccc_2p_cmin',+$('pMin').value);LS.set('ccc_2p_cinc',+$('pInc').value||0);}
       if(!w||!b){$('pErr').textContent='Please enter both players’ names.';(w?$('pB'):$('pW')).focus();return;}
       if(w.toLowerCase()===b.toLowerCase()){$('pErr').textContent='Please use two different names.';return;}
       LS.set('ccc_2p_names',{w,b});LS.set('ccc_2p_flip',$('pFlip').checked);
-      this.start({id:CCX.newId(),type:'2p',date:new Date().toISOString(),white:w,black:b,result:'*',moves:[],uci:[]});};
+      this.start({id:CCX.newId(),type:'2p',date:new Date().toISOString(),white:w,black:b,result:'*',moves:[],uci:[],tc:tc?tc.label:null,tcBase:tc?tc.base:0,tcInc:tc?tc.inc:0});};
     document.querySelectorAll('[data-resume]').forEach(el=>el.onclick=()=>{const g=CCX.games().find(x=>x.id===el.dataset.resume);if(g)this.start(g);});},
   unfinishedHtml(){const u=CCX.games().filter(g=>g.type==='2p'&&g.result==='*'&&g.moves.length).slice(0,3);
     if(!u.length)return '';
     return `<div class="card"><h2>Continue a game</h2>${u.map(g=>`<div class="list-item" data-resume="${g.id}"><div><b>${esc(g.white)}</b> vs <b>${esc(g.black)}</b><div class="small muted">${new Date(g.date).toLocaleString()} · ${g.moves.length} moves</div></div><span class="pill">Resume ▶</span></div>`).join('')}</div>`;},
-  start(g){this.g=JSON.parse(JSON.stringify(g));this.pos=startPos();this.stack=[];
+  start(g){if(this.clock)this.clock.stop();this.clock=null;
+    this.g=JSON.parse(JSON.stringify(g));this.pos=startPos();this.stack=[];
     for(const u of this.g.uci){const m=findUci(this.pos,u);if(!m)break;this.stack.push({m,u:make(this.pos,m)});}
+    if(this.g.tcBase){this.clock=new CCClock.Clock({base:this.g.tcBase,inc:this.g.tcInc||0},side=>this.flag(side),()=>this.drawClocks(),this.g.clock);
+      if(this.g.result==='*'){if(this.g.clock){this.clock.side=this.pos.turn;this.paused=true;}else{this.clock.start(this.pos.turn);this.paused=false;}}}
     this.view='game';this.drawOffer=false;this.click=mover(()=>this.g.result==='*'?this.pos:null,m=>this.play(m),()=>this.draw());this.draw();},
-  play(m){const s=A.san(this.pos,m);this.stack.push({m,u:make(this.pos,m)});this.g.moves.push(s);this.g.uci.push(uciOf(m));this.drawOffer=false;
+  play(m){if(this.clock){if(this.paused){this.paused=false;this.clock.held=false;}this.clock.moved(this.pos.turn);}
+    const s=A.san(this.pos,m);this.stack.push({m,u:make(this.pos,m)});this.g.moves.push(s);this.g.uci.push(uciOf(m));this.drawOffer=false;
     const st=status(this.pos);
     if(st==='mate')this.g.result=this.pos.turn===1?'0-1':'1-0';else if(st==='stalemate'||st==='fifty'||st==='material')this.g.result='1/2-1/2';
-    CCX.saveGame(this.g);A.beep(true);this.draw();},
-  undo(){if(!this.stack.length)return;const x=this.stack.pop();unmake(this.pos,x.m,x.u);this.g.moves.pop();this.g.uci.pop();this.g.result='*';CCX.saveGame(this.g);this.click.clear();this.draw();},
-  end(res,why){this.g.result=res;this.g.why=why;CCX.saveGame(this.g);this.draw();},
+    if(this.g.result!=='*'&&this.clock)this.clock.stop();
+    this.saveClock();CCX.saveGame(this.g);A.beep(true);this.draw();},
+  saveClock(){if(this.clock)this.g.clock=this.clock.times();},
+  flag(side){const winner=-side,pos=this.pos;const name=side===1?this.g.white:this.g.black;
+    if(!CCClock.hasMatingMaterial(pos,winner))this.end('1/2-1/2',`${name} ran out of time, but the opponent can’t checkmate: draw`);
+    else this.end(winner===1?'1-0':'0-1',`${name} lost on time`);A.speak(`${name} ran out of time.`);},
+  drawClocks(){const el=$('twoClocks');if(!el||!this.clock)return;
+    el.innerHTML=CCClock.clockHtml(this.clock,[{side:1,label:'♔ '+esc(this.g.white)},{side:-1,label:'♚ '+esc(this.g.black)}]);
+    const pb=$('tPause');if(pb)pb.textContent=this.clock.running?'⏸ Pause':'▶ Resume clock';},
+  undo(){if(!this.stack.length)return;const x=this.stack.pop();unmake(this.pos,x.m,x.u);this.g.moves.pop();this.g.uci.pop();this.g.result='*';delete this.g.why;
+    if(this.clock){this.clock.flagged=false;if(this.clock.running)this.clock.start(this.pos.turn);else this.clock.side=this.pos.turn;}
+    this.saveClock();CCX.saveGame(this.g);this.click.clear();this.draw();},
+  end(res,why){this.g.result=res;this.g.why=why;if(this.clock)this.clock.stop();this.saveClock();CCX.saveGame(this.g);this.draw();},
   draw(){
     const g=this.g,pos=this.pos,turnW=pos.turn===1,st=status(pos),over=g.result!=='*';
     const flip=LS.get('ccc_2p_flip',true)?!turnW&&!over:false;
     const name=turnW?g.white:g.black,last=this.stack.length?this.stack[this.stack.length-1].m:null;
     let label,main,cls;
     if(over){cls='over';label='Game over';
-      main=st==='mate'?`Checkmate! ${esc(turnW?g.black:g.white)} wins`:g.result==='1/2-1/2'?(st==='stalemate'?'Stalemate: draw':g.why||'Draw'):esc(g.why||resultText(g));}
-    else{cls='you';label=st==='check'?'Check!':'To move';main=`<span class="pc ${turnW?'w':'b'}">${turnW?'♔':'♚'}︎</span>${esc(name)}`;}
+      main=g.why?esc(g.why):st==='mate'?`Checkmate! ${esc(turnW?g.black:g.white)} wins`:g.result==='1/2-1/2'?(st==='stalemate'?'Stalemate: draw':'Draw'):esc(resultText(g));}
+    else{cls='you';label=st==='check'?'Check!':(this.clock&&!this.clock.running?'To move · clock paused':'To move');main=`<span class="pc ${turnW?'w':'b'}">${turnW?'♔':'♚'}︎</span>${esc(name)}`;}
     let mv='';g.moves.forEach((m,i)=>{if(i%2===0)mv+=`<b>${i/2+1}.</b> `;mv+=esc(m)+' ';});
     $('viewTwo').innerHTML=`<div class="card">
       <div class="players"><span class="${turnW&&!over?'on':''}">♔ ${esc(g.white)}</span><span class="muted small">vs</span><span class="${!turnW&&!over?'on':''}">♚ ${esc(g.black)}</span></div>
       <div id="twoCard" class="mcard ${cls}"><div class="mcLabel">${label}</div><div class="mcMain">${main}</div><div class="mcSub">${last&&!over?'Last move: '+esc(g.moves[g.moves.length-1]):''}</div></div>
+      ${this.clock?`<div class="clocks" id="twoClocks"></div>`:''}
       <div id="twoBoard"></div>
       <div class="row" style="justify-content:center">
+        ${over?'':legal(pos).filter(m=>m.fl&F_CASTLE).sort((a,b)=>(b.t&7)-(a.t&7)).map(m=>`<button class="primary" data-castle="${m.t}">🏰 Castle ${(m.t&7)===6?'king side (O-O)':'queen side (O-O-O)'}</button>`).join('')}
         <button id="tUndo" ${this.stack.length?'':'disabled'}>↶ Undo move</button>
+        ${this.clock&&!over?'<button id="tPause">⏸ Pause</button>':''}
         ${over?'':`<button id="tDraw">${this.drawOffer?'✓ Agree draw':'½ Offer draw'}</button><button id="tResign">🏳 ${esc(name)} resigns</button>`}
         <button id="tNew">New game</button></div>
       <div class="mlist">${mv||'No moves yet.'}</div></div>`;
     drawBoard($('twoBoard'),pos,{flip,last,sel:this.click.sel(),targets:this.click.targets(),onClick:over?null:this.click});
     $('tUndo').onclick=()=>this.undo();
-    $('tNew').onclick=()=>{this.g=null;this.setup();};
+    document.querySelectorAll('[data-castle]').forEach(el=>el.onclick=()=>{const m=legal(this.pos).find(x=>(x.fl&F_CASTLE)&&x.t===+el.dataset.castle);if(m)this.play(m);});
+    this.drawClocks();
+    if($('tPause'))$('tPause').onclick=()=>{if(this.clock.running){this.clock.pause();this.saveClock();CCX.saveGame(this.g);}else{this.paused=false;this.clock.resume();}this.drawClocks();};
+    $('tNew').onclick=()=>{if(this.clock){this.clock.pause();this.saveClock();CCX.saveGame(this.g);this.clock=null;}this.g=null;this.setup();};
     if(!over){$('tDraw').onclick=()=>{if(this.drawOffer)this.end('1/2-1/2','Draw agreed');else{this.drawOffer=true;this.draw();}};
       $('tResign').onclick=e=>{const b=e.target;if(b.dataset.sure){this.end(turnW?'0-1':'1-0',`${name} resigned`);}else{b.dataset.sure=1;b.textContent='Tap again to resign';}};}}
 };
@@ -162,7 +239,7 @@ const Hist={sel:null, // null = normal view; Set of ids = select mode
       ${all.map(g=>`<div class="list-item${sel&&sel.has(g.id)?' picked':''}" data-g="${g.id}">
         ${sel?`<input type="checkbox" ${sel.has(g.id)?'checked':''} style="width:20px;height:20px;flex:none;pointer-events:none">`:''}
         <div style="flex:1"><b>${esc(g.white)}</b> vs <b>${esc(g.black)}</b>
-        <div class="small muted">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':'two players'} · ${g.moves.length} moves</div></div>
+        <div class="small muted">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':'two players'} · ${g.moves.length} moves${g.tc?' · ⏱ '+esc(g.tc):''}</div></div>
         <span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span></div>`).join('')}</div>`;
     document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{
       if(!this.sel)return this.open(el.dataset.g);

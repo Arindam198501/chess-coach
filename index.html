@@ -64,6 +64,7 @@
   body.playing:not(.camOpen) #overlay{display:none}
   body.playing:not(.camOpen) #videoWrap{min-height:60px;max-width:none!important}
   body.playing:not(.camOpen) #camChip{display:block}
+  body.playing.nocam:not(.camOpen) #camPanel{display:none}
   body.playing.camOpen #camPanel{position:fixed;inset:0;z-index:40;border-radius:0;overflow:auto}
   body.playing.camOpen #camClose{display:inline-block}
   #board{position:relative}
@@ -122,6 +123,13 @@
   .mlist span{padding:1px 4px;border-radius:4px;cursor:pointer} .mlist span.cur{background:var(--accent);color:#1b1b1b}
   .players{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:16px}
   .players .on{color:var(--accent)}
+  .clocks{display:flex;gap:10px;margin:10px 0}
+  .clk{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:#20242b;border:2px solid #3a3f49;min-width:0}
+  .clk.on{border-color:var(--accent);background:#2e2a1e}
+  .clk.low .clkTime{color:var(--bad)} .clk.flag{border-color:var(--bad);background:#3a2020}
+  .clkName{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .clkTime{font:700 clamp(22px,7vw,30px) ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5px}
+  .clk.on .clkTime{color:var(--text)}
   .mcard{text-align:center;border-radius:12px;padding:12px 10px;margin-top:10px;background:#262a31;border:2px solid #3a3f49}
   .mcard.you{border-color:var(--accent)} .mcard.over{border-color:var(--bad)}
   .mcLabel{font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
@@ -180,6 +188,7 @@
   <section id="gamePanel">
     <h2>Game</h2>
     <div id="moveCard"><div id="mcLabel"></div><div id="bigMove"></div><div id="bigMoveSub"></div></div>
+    <div class="clocks hide" id="playClocks"></div>
     <div id="camState" class="hide"></div>
     <div id="status">Start the live camera (or take a photo) and mark the board corners. You can also play without a camera by tapping moves on the board below.</div>
     <div id="cands"></div>
@@ -188,6 +197,8 @@
       <button id="btnDone" class="big" disabled>✓ My move is done</button>
       <label class="btn big hide" for="photoCap" id="btnPhotoPlay">📷 Take photo</label>
     </div>
+    <div class="row hide" id="castleRow" style="justify-content:center">
+    </div>
     <div id="board"></div>
     <div class="eval" id="evalLine"></div>
     <div class="row" style="justify-content:center">
@@ -195,10 +206,13 @@
       <button id="btnUndo" disabled>↶ Take back</button>
       <button id="btnSync" disabled title="Use when the real board matches the screen but the app is confused">⟳ Re-sync board</button>
       <button id="btnNew">New game</button>
+      <button id="btnPause" class="hide">⏸ Pause clock</button>
       <button id="btnSnap" title="Saves what the camera saw, to send to Claude">📸 Save snapshot</button>
     </div>
     <div class="row" style="justify-content:center">
       <label>I play <select id="selColor"><option value="1">White</option><option value="-1">Black</option></select></label>
+      <label>⏱ Timer <span id="timerSlot"></span></label>
+      <span id="timerCustom" class="hide" style="display:inline-flex;gap:6px;align-items:center"><input id="tMin" type="number" min="0.25" max="600" step="0.25" value="10" style="width:70px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> min + <input id="tInc" type="number" min="0" max="120" step="1" value="0" style="width:60px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"> s</span>
       <label>Engine <select id="selLevel">
         <option value="1400">~1400</option><option value="1600">~1600</option><option value="1800" selected>~1800</option>
         <option value="2000">~2000</option><option value="2200">~2200</option><option value="2500">~2500</option><option value="0">Full strength</option>
@@ -468,8 +482,18 @@ function renderBoard(heat){
   $('moves').innerHTML=html||'No moves yet.';$('moves').scrollTop=1e6;
   $('evalLine').textContent=lastEval;
   updateButtons();}
+function castleButtons(){
+  const row=$('castleRow');const cs=state==='human'?legal(game).filter(m=>m.fl&F_CASTLE):[];
+  const key=cs.map(m=>m.t).join(',')+'|'+mode;
+  if(row.dataset.key===key)return;row.dataset.key=key;row.innerHTML='';row.classList.toggle('hide',!cs.length);
+  cs.sort((a,b)=>(b.t&7)-(a.t&7)).forEach(m=>{const k=(m.t&7)===6,b=document.createElement('button');b.className='big';
+    b.innerHTML=`🏰 ${mode==='none'?'Castle':'I castled'} ${k?'king side (O-O)':'queen side (O-O-O)'}`;
+    b.title=mode==='none'?'Castle':'First castle on your real board (king and rook), then tap here';
+    b.onclick=()=>{if(state!=='human')return;const mm=legal(game).find(x=>x.f===m.f&&x.t===m.t);if(mm)commitHuman(mm);};row.appendChild(b);});}
 function updateButtons(){
-  document.body.classList.toggle('playing',state!=='idle');
+  castleButtons();
+  if(clock)renderClocks();
+  document.body.classList.toggle('playing',state!=='idle');document.body.classList.toggle('nocam',mode==='none');
   $('btnPhotoPlay').classList.toggle('hide',!(state!=='idle'&&mode!=='live'));
   $('btnDone').disabled=!(state==='remove'||state==='human');
   $('btnDone').textContent=state==='remove'?'✓ Piece removed':'✓ My move is done';
@@ -482,15 +506,26 @@ function updateButtons(){
 
 // ================= game flow =================
 function pushMove(m){const s=san(game,m);const u=make(game,m);hist.push({m,u,san:s});saveGame();return s;}
-let gameId=null,gameResult='*',gameDate=null;
+let gameId=null,gameResult='*',gameDate=null,gameWhy='',clock=null,gameTC=null,lastMoveDelay=0;
+function renderClocks(){const el=$('playClocks');if(!clock){el.classList.add('hide');$('btnPause').classList.add('hide');return;}
+  el.classList.remove('hide');const me=yourName(),eng='Engine';
+  el.innerHTML=CCClock.clockHtml(clock,[{side:-humanColor,label:'🤖 '+eng},{side:humanColor,label:'🙂 '+me.replace(/[<>&]/g,'')}]);
+  const pb=$('btnPause');pb.classList.toggle('hide',state==='over'||state==='idle');pb.textContent=clock.running?'⏸ Pause clock':'▶ Resume clock';}
+function onFlag(side){
+  if(state==='over'||state==='idle')return;
+  const youLost=side===humanColor,winner=-side;
+  state='over';removeSq=-1;
+  if(!CCClock.hasMatingMaterial(game,winner)){gameResult='1/2-1/2';gameWhy=(youLost?'You':'The engine')+' ran out of time, but the other side can’t checkmate: draw';}
+  else{gameResult=winner===1?'1-0':'0-1';gameWhy=youLost?'You lost on time':'The engine lost on time. You win!';}
+  saveGame();setStatus('⏱ '+gameWhy,youLost?'bad':'good');setCard('over','Game over · time',gameWhy,'');speak(youLost?'Your time is up.':'The engine ran out of time.');renderBoard();}
 function yourName(){return ($('yourName').value||'').trim()||'You';}
 function saveGame(){
   if(!window.CCX||!gameId||!hist.length)return;
   const eng='Stockfish '+($('selLevel').value==='0'?'(full)':'~'+$('selLevel').value),me=yourName();
-  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,
+  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,tc:gameTC?gameTC.label:null,why:gameWhy||undefined,
     moves:hist.map(h=>h.san),uci:hist.map(h=>FILES[h.m.f&7]+((h.m.f>>3)+1)+FILES[h.m.t&7]+((h.m.t>>3)+1)+(h.m.p?' pnbrq'[h.m.p]:''))});}
 function gameOverCheck(){
-  const r=gameOverCheck0();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
+  const r=gameOverCheck0();if(r&&clock)clock.stop();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
 function gameOverCheck0(){
   const L=legal(game);
   if(!L.length){state='over';removeSq=-1;
@@ -505,7 +540,9 @@ function gameOverCheck0(){
 
 function startGame(){
   game=startPos();hist=[];removeSq=-1;lastEngine=null;selected=-1;hintMove=null;lastEval='';
-  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();
+  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();gameWhy='';
+  if(clock)clock.stop();gameTC=window.CCClock?CCClock.parseTC($('selTimer').value,$('tMin'),$('tInc')):null;
+  clock=gameTC?new CCClock.Clock(gameTC,onFlag,renderClocks):null;if(clock)clock.start(1);
   humanColor=+$('selColor').value;rebuild();
   clearBig();
   if(SF.ready)SF.w.postMessage('ucinewgame');
@@ -521,6 +558,7 @@ function clearBig(){$('cands').innerHTML='';}
 
 function commitHuman(m){
   hintMove=null;selected=-1;clearBig();
+  if(clock)clock.moved(humanColor,lastMoveDelay);lastMoveDelay=0;
   const txt=mt(m);pushMove(m);captureRef();beep(true);
   renderBoard();
   if(gameOverCheck()){renderBoard();return;}
@@ -531,7 +569,8 @@ function engineTurn(){
   state='thinking';setCard('','Engine is thinking…','…','');renderBoard();
   if(!hist.length)setStatus('You are Black. The engine moves first.');
   const elo=+$('selLevel').value,t0=Date.now();
-  runEngine(game,elo,engineMovetime(elo)).then(r=>{
+  let mt0=engineMovetime(elo);if(clock){const left=clock.left(-humanColor);mt0=Math.max(150,Math.min(mt0,left/40+(gameTC.inc||0)*0.6));}
+  runEngine(game,elo,mt0).then(r=>{
     if(state!=='thinking')return;
     const m=r&&findLegal(r);if(!m){gameOverCheck();renderBoard();return;}
     setTimeout(()=>{
@@ -539,10 +578,11 @@ function engineTurn(){
       const mine=-r.score; // engine's score is from its own side; flip to yours
       lastEval=Math.abs(r.score)>MATE-200?(r.score>0?'Engine sees a forced mate against you.':'You have a forced mate available!'):`Evaluation (your view): ${mine>=0?'+':''}${(mine/100).toFixed(1)}`;
       const tx=moveText(game,m),s=san(game,m),capSq=m.c?(m.fl&F_EP?m.t-8*game.turn:m.t):-1;
+      if(clock){if(state==='over')return;clock.moved(-humanColor,0);}
       pushMove(m);lastEngine=m;lastEngineTx={tx,s,cap:m.c};beep(true);
       if(gameOverCheck()){setCard('over','Engine played',tx.html,$('status').textContent);speak(tx.speech);renderBoard();return;}
       if(capSq>=0){
-        state='remove';removeSq=capSq;
+        state='remove';removeSq=capSq;if(clock)clock.pause();
         setCard('engine','Engine played',tx.html,`(${s})`+(tx.sub.replace(/^takes [A-Za-z]+( on \w+ \(en passant\))? ?·? ?/,'')?' · '+tx.sub.replace(/^takes [A-Za-z]+( on \w+ \(en passant\))? ?·? ?/,''):'')+` · Remove your ${pname(m.c)} from ${sqName(capSq)} on your board`);
         setStatus(mode==='photo'?`Take your ${pname(m.c)} off ${sqName(capSq)}, then tap 📷 Take photo.`:mode==='live'?`Take your ${pname(m.c)} off ${sqName(capSq)}. The camera will notice.`:`Take your ${pname(m.c)} off ${sqName(capSq)}, then tap ✓ Piece removed.`,'bad');
         speak(`${tx.speech}. Remove your ${pname(m.c)} from ${sqName(capSq)}.`);
@@ -560,7 +600,7 @@ function engineCard(){
   setCard('engine','Engine played · your turn',tx.html,`(${s})`+(tx.sub?' · '+tx.sub:'')+` · now make your move`+(mode==='photo'?', then tap 📷 Take photo':' on your board'));}
 function confirmRemoval(){
   if(state!=='remove')return;
-  removeSq=-1;captureRef();beep(true);state='human';engineCard();
+  removeSq=-1;captureRef();beep(true);state='human';if(clock)clock.resume();engineCard();
   setStatus(inCheck(game,game.turn)?'Thanks. You are in <b>check</b>!':'Thanks. Your turn.',inCheck(game,game.turn)?'bad':'good');
   renderBoard();}
 
@@ -583,7 +623,8 @@ function undo(){
   if(!hist.length||state==='thinking')return;
   removeSq=-1;lastEngine=null;lastEngineTx=null;
   while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
-  gameResult='*';saveGame();
+  gameResult='*';gameWhy='';saveGame();
+  if(clock){clock.flagged=false;clock.start(game.turn);}
   if(game.turn!==humanColor){engineTurn();return;}
   state='human';hintMove=null;selected=-1;needResync=true;lastEval='';clearBig();yourTurnCard();
   setStatus('Moves taken back. Undo your last move on the real board (and put back any piece you removed), then press <b>⟳ Re-sync board</b>'+(mode==='photo'?' (take a photo first).':'.'));
@@ -807,11 +848,12 @@ function analyse(force,fromPhoto){lastAnalysis=new Date().toLocaleTimeString();
     const strong=b&&b.minS>T*0.7&&b.meanS>T;
     const clean=strong&&b.minS>T&&b.maxOut<Math.max(T*0.6,b.minS*0.6);
     const likely=strong&&b.maxOut<b.minS*0.85&&(!c2||c2.score<b.score-T*0.3);
+    lastMoveDelay=(mode==='live'&&lastMotionAt)?Math.min(4000,Math.max(0,Date.now()-lastMotionAt)):0;
     if(clean||(T2&&likely)){waitKey=null;choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
     if(likely&&!T2){ // something else changed a bit too (hand nearby, glare): wait one more still moment, then ask
       const key=b.m.f+'-'+b.m.t;if(waitKey!==key){waitKey=key;return;}
       // same answer after the board stayed still a while longer: accept it
-      waitKey=null;choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
+      waitKey=null;lastMoveDelay=Math.min(4000,Math.max(0,Date.now()-lastMotionAt));choosePromoThen(L.filter(m=>m.f===b.m.f&&m.t===b.m.t),commitHuman);return;}
     waitKey=null;
     const opts=uniq.filter(r=>r.minS>T*0.5).slice(0,3);
     const box=$('cands');box.innerHTML='';
@@ -992,9 +1034,10 @@ $('btnSync').onclick=()=>{if(!lastFeat||!H)return;ref=lastFeat.slice();refShot=s
   if(state==='remove'){removeSq=-1;state='human';engineCard();}
   setStatus('Board re-synced. Your move.','good');renderBoard();};
 $('btnUndo').onclick=undo;
+$('btnPause').onclick=()=>{if(!clock||state==='over')return;if(clock.running){clock.pause();setStatus('⏸ Clock paused. Tap ▶ Resume clock to continue.');}else{clock.resume();setStatus('Clock running.');}renderClocks();};
 $('btnSnap').onclick=saveSnapshot;
 $('btnHint').onclick=hint;
-$('btnNew').onclick=()=>{state='idle';removeSq=-1;lastEngine=null;lastEngineTx=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
+$('btnNew').onclick=()=>{if(clock){clock.stop();clock=null;}renderClocks();state='idle';removeSq=-1;lastEngine=null;lastEngineTx=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
   setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
 $('selColor').onchange=()=>{if(state==='idle'){humanColor=+$('selColor').value;rebuild();renderBoard();}};
 window.addEventListener('resize',()=>{sizeWrap();drawOverlay();});
@@ -1004,12 +1047,19 @@ renderBoard();tick();
 // shared with extras.js (Two players / Learn / History tabs)
 window.CCApp={san,moveText,pname,SF,toFen,sqName,speak,beep,GLYPH};
 // for automated testing only
-window.__ccc={get corners(){return corners},get orient(){return orientInfo},get track(){return trackMsg},diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
+window.__ccc={get clock(){return clock&&{w:clock.left(1),b:clock.left(-1),side:clock.side,running:clock.running}},get why(){return gameWhy},get corners(){return corners},get orient(){return orientInfo},get track(){return trackMsg},diag(){if(!ref||!lastFeat)return null;const d=adjDiff(lastFeat,ref);return Array.from(d).map((v,i)=>[sqName(i),+v.toFixed(1)]).sort((a,b)=>b[1]-a[1]).slice(0,7);},get dbg(){return {stillCount,sawMotion,maxHeat:curHeat&&Math.max(...curHeat),ref:!!ref,lastFeat:!!lastFeat,needResync,mode,H:!!H}},get state(){return state},get hist(){return hist.map(h=>h.san)},get removeSq(){return removeSq},get engineReady(){return SF.ready},
   board(){return Array.from(game.b)},after(f,t,p){const m=legal(game).find(x=>x.f===f&&x.t===t&&(x.p||0)===(p||0));if(!m)return null;const u=make(game,m);const b=Array.from(game.b);unmake(game,m,u);return b;},
   legalUci(){return legal(game).map(m=>FILES[m.f&7]+((m.f>>3)+1)+FILES[m.t&7]+((m.t>>3)+1)+(m.p?' pnbrq'[m.p]:''));}};
 })();
 </script>
 <script src="courses.js"></script>
 <script src="extras.js"></script>
+<script>
+(function(){const slot=document.getElementById('timerSlot');let v='none';try{v=JSON.parse(localStorage.getItem('ccc_timer')||'"none"');}catch(e){}
+  slot.innerHTML=CCClock.timerSelectHtml('selTimer',v);const sel=document.getElementById('selTimer'),cu=document.getElementById('timerCustom');
+  try{const c=JSON.parse(localStorage.getItem('ccc_timer_custom')||'null');if(c){document.getElementById('tMin').value=c.m;document.getElementById('tInc').value=c.i;}}catch(e){}
+  const upd=()=>{cu.classList.toggle('hide',sel.value!=='custom');try{localStorage.setItem('ccc_timer',JSON.stringify(sel.value));localStorage.setItem('ccc_timer_custom',JSON.stringify({m:+document.getElementById('tMin').value,i:+document.getElementById('tInc').value}));}catch(e){}};
+  sel.onchange=upd;document.getElementById('tMin').onchange=upd;document.getElementById('tInc').onchange=upd;upd();})();
+</script>
 </body>
 </html>
