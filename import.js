@@ -1,4 +1,4 @@
-// Chess Cam Coach: import games from Lichess, chess.com or any PGN, then review them
+// Shatranj: import games from Lichess, chess.com or any PGN, then review them
 (function(){
 const $=id=>document.getElementById(id);
 const A=window.CCApp,X=window.CCLearn,LS=X.LS,esc=X.esc;

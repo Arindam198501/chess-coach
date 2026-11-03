@@ -1,12 +1,16 @@
-# Chess Cam Coach: stage 1
+# Shatranj: chess coach for your real board
 
 Play chess on your real board against Stockfish. The camera reads your moves, and the app speaks and shows the engine's reply for you to play on the board.
+
+**Shatranj** (the classic Indian name for chess) is a chess coach for your real board. Open the app to its **🏠 Home** screen: play on your board, two-player games, courses, history and reviews, patterns, puzzles from your mistakes, Lichess / chess.com import, and your rating, all one tap away. On Android, use Chrome's menu → **Add to Home screen** to install it with the Shatranj icon.
 
 ## What's in this folder
 
 | File | What it is |
 |---|---|
 | `index.html` | The app |
+| `extras.js`, `review.js`, `rating.js`, `import.js`, `courses.js` | Two players, History, Learn, game review, rating, import, course content |
+| `img/`, `manifest.webmanifest` | Logo and app icons |
 | `engine/stockfish-19-lite-single.js` + `.wasm` | The Stockfish 19 engine (GPL licence in `engine/STOCKFISH-LICENSE.txt`) |
 
 Keep the files together exactly as they are. The `engine` folder must stay next to `index.html`.

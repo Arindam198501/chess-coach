@@ -1,4 +1,4 @@
-// Chess Cam Coach: Two players · History · Learn
+// Shatranj: Two players · History · Learn
 // Uses the chess rules from the core script (startPos, legal, make, unmake, inCheck, F_* …)
 // and helpers shared by the main app (window.CCApp).
 (function(){
@@ -127,7 +127,7 @@ function pgnOf(g){
   const d=new Date(g.date||Date.now());const ds=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
   let mv='';g.moves.forEach((m,i)=>{if(i%2===0)mv+=(i/2+1)+'. ';mv+=m+' ';});
   const tc=g.tc?`[TimeControl "${Math.round(parseFloat(g.tc)*60)}+${parseFloat(g.tc.split('+')[1])||0}"]\n`:'';
-  return `[Event "${g.type==='engine'?'Game vs engine':'Two-player game'}"]\n[Site "Chess Cam Coach"]\n[Date "${ds}"]\n[White "${g.white}"]\n[Black "${g.black}"]\n[Result "${g.result}"]\n${tc}${g.why?`[Termination "${g.why}"]\n`:''}\n${mv}${g.result}\n`;}
+  return `[Event "${g.type==='engine'?'Game vs engine':'Two-player game'}"]\n[Site "Shatranj"]\n[Date "${ds}"]\n[White "${g.white}"]\n[Black "${g.black}"]\n[Result "${g.result}"]\n${tc}${g.why?`[Termination "${g.why}"]\n`:''}\n${mv}${g.result}\n`;}
 function copyText(t,btn){
   const done=()=>{const o=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=o,1500);};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done,()=>fallback());else fallback();
@@ -142,9 +142,10 @@ function show(v){
   curView=v;
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $('viewPlay').classList.toggle('hide',v!=='play');
+  $('viewHome').classList.toggle('hide',v!=='home');
   ['two','learn','hist'].forEach(x=>$('view'+x[0].toUpperCase()+x.slice(1)).classList.toggle('hide',v!==x));
   document.body.classList.toggle('otherview',v!=='play');
-  if(v==='two')Two.render();if(v==='learn')Learn.home();if(v==='hist'){Hist.sel=null;Hist.list();}
+  if(v==='home')Home.render();if(v==='two')Two.render();if(v==='learn')Learn.home();if(v==='hist'){Hist.sel=null;Hist.list();}
   window.scrollTo({top:0});}
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 const st=document.createElement('style');st.textContent='body.otherview #camPanel{display:none!important}';document.head.appendChild(st);
@@ -291,7 +292,7 @@ const Hist={sel:null, // null = normal view; Set of ids = select mode
         <div class="players" style="margin-top:12px"><span>♔ ${esc(g.white)}</span><span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span><span>♚ ${esc(g.black)}</span></div>
         <div class="small muted" style="text-align:center;margin-top:4px">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':g.type==='online'?(g.url?`<a href="${esc(g.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(g.source)} ↗</a>`:esc(g.source)):'two players'}${g.whiteElo||g.blackElo?` · ${g.whiteElo||'?'} vs ${g.blackElo||'?'}`:''}${g.tc?' · ⏱ '+esc(g.tc):''}${g.why?' · '+esc(g.why):''}</div>
         <div id="histBoard"></div>
-        ${nt?`<div class="lesson-text" style="border-left:4px solid ${nt.color||'#3a3f49'};font-size:14.5px">${nt.badge} ${esc(nt.text)}${nt.best?' <span class="muted">(green arrow = best move)</span>':''}</div>`:rv&&i===0?'<div class="lesson-text small">Step through the game with ▶. Mistakes are coloured in the move list; the review is below.</div>':''}
+        ${nt?`<div class="lesson-text" style="border-left:4px solid ${nt.color||'var(--line2)'};font-size:14.5px">${nt.badge} ${esc(nt.text)}${nt.best?' <span class="muted">(green arrow = best move)</span>':''}</div>`:rv&&i===0?'<div class="lesson-text small">Step through the game with ▶. Mistakes are coloured in the move list; the review is below.</div>':''}
         <div class="row" style="justify-content:center"><button id="h0">⏮</button><button id="hP">◀</button><span class="muted">${i} / ${ps.length-1}</span><button id="hN">▶</button><button id="hE">⏭</button><button id="hF">⇅ Flip</button></div>
         <div class="mlist">${mv||'No moves.'}</div>
         <div class="row"><button id="hCopy">📋 Copy PGN</button>${g.type==='2p'&&g.result==='*'?'<button id="hResume" class="primary">▶ Continue this game</button>':''}<button id="hDel">🗑 Delete</button></div>`;
@@ -323,12 +324,12 @@ const Learn={
   all(){const C=(window.COURSES||[]).slice();if(window.CCReview){const m=CCReview.mistakeCourse();C.unshift(m);}if(this.custom)C.push(this.custom);return C;},
   playCustom(c,li){this.custom=c;this.c=c;this.lesson(li||0);},
   home(){
-    const P=prog(),C=this.all().filter(c=>c.id!=='__review');
+    const P=prog(),C=this.all().filter(c=>c.id!=='__review'&&c.id!=='__daily');
     $('viewLearn').innerHTML=`<div class="card"><h2>Courses</h2><p class="muted small">Lessons explain an idea on the board, then let you practise it. Puzzles are checked by Stockfish, so any move that works is accepted.</p>
       ${C.map(c=>{const n=c.lessons.length,d=c.lessons.filter(l=>P[l.id]).length;return `<div class="list-item" data-c="${c.id}" ${c.id==='mine'?'style="border-color:#5a5aff"':''}><div><b>${c.icon} ${esc(c.title)}</b><div class="small muted">${esc(c.desc)}</div></div><span class="pill ${d===n?'done':''}">${d}/${n}</span></div>`;}).join('')}</div>`;
     document.querySelectorAll('[data-c]').forEach(el=>el.onclick=()=>this.course(el.dataset.c));},
   course(cid){
-    const c=this.all().find(x=>x.id===cid),P=prog();if(!c)return this.home();if(cid==='__review')return this.home();this.c=c;
+    const c=this.all().find(x=>x.id===cid),P=prog();if(!c)return this.home();if(cid==='__review'||cid==='__daily')return this.home();this.c=c;
     $('viewLearn').innerHTML=`<div class="card"><button id="lBack">← Courses</button><h2 style="margin-top:12px">${c.icon} ${esc(c.title)}</h2><p class="muted small">${esc(c.desc)}</p>
       ${c.lessons.length?'':'<p class="muted">Nothing here yet.</p>'}${c.lessons.map((l,i)=>`<div class="list-item" data-l="${i}"><div><b>${i+1}. ${esc(l.title)}</b><div class="small muted">${esc(l.sub||'')}</div></div><span class="pill ${P[l.id]?'done':''}">${P[l.id]?'✓ Done':l.steps.length+' steps'}</span></div>`).join('')}</div>`;
     $('lBack').onclick=()=>this.home();
@@ -366,7 +367,7 @@ const Learn={
         <button id="lNext" class="${this.solved&&(s.type!=='line'||this.k===s.moves.length)?'primary':''}">${lastStep?'Finish lesson ✓':'Next →'}</button></div></div>`;
     if(s.type==='line'&&!this.lineSan){this.lineSan=[];const p=clonePos(this.start);for(const [u] of s.moves){const m=findUci(p,u);if(!m)break;this.lineSan.push(A.san(p,m));make(p,m);}}
     drawBoard($('learnBoard'),this.pos,{flip:this.flip,last:this.last,sel:this.click.sel(),targets:this.click.targets(),arrows:this.arrows,marks:this.marks,onClick:this.click});
-    $('lBack').onclick=()=>this.c.id==='__review'?show('hist'):this.course(this.c.id);
+    $('lBack').onclick=()=>this.c.id==='__review'?show('hist'):this.c.id==='__daily'?show('home'):this.course(this.c.id);
     $('lPrevS').onclick=()=>{this.si--;this.lineSan=null;this.enter();};
     $('lNext').onclick=()=>{if(lastStep){const P=prog();P[l.id]=true;LS.set('ccc_progress',P);this.done();}else{this.si++;this.lineSan=null;this.enter();}};
     if(s.type==='line'){$('lPrev').onclick=()=>this.lineGo(this.k-1);$('lNextM').onclick=()=>this.lineGo(this.k+1);}
@@ -377,7 +378,7 @@ const Learn={
     const next=this.c.lessons[this.li+1];
     $('viewLearn').innerHTML=`<div class="card" style="text-align:center"><div style="font-size:46px">🏆</div><h2>Lesson complete</h2><p>${esc(this.l.title)}</p>
       <div class="row" style="justify-content:center">${next?`<button class="primary big" id="lNextL">Next: ${esc(next.title)} →</button>`:''}<button id="lCourse">Back to course</button></div></div>`;
-    if(next)$('lNextL').onclick=()=>this.lesson(this.li+1);$('lCourse').onclick=()=>this.c.id==='__review'?show('hist'):this.course(this.c.id);},
+    if(next)$('lNextL').onclick=()=>this.lesson(this.li+1);$('lCourse').onclick=()=>this.c.id==='__review'?show('hist'):this.c.id==='__daily'?show('home'):this.course(this.c.id);},
   lineGo(k){const s=this.s;k=Math.max(0,Math.min(s.moves.length,k));this.pos=clonePos(this.start);this.last=null;
     for(let i=0;i<k;i++){const m=findUci(this.pos,s.moves[i][0]);if(!m)break;make(this.pos,m);this.last=m;}
     this.k=k;const ar=s.moves[k-1]&&s.moves[k-1][2];this.arrows=ar?ar.map(u=>({f:sqi(u.slice(0,2)),t:sqi(u.slice(2,4)),c:'#5a5aff'})):null;this.draw();},
@@ -440,5 +441,55 @@ function sqi(n){return (n.charCodeAt(0)-97)+(+n[1]-1)*8;}
 function marksOf(o){if(!o)return null;const r={};for(const k in o)r[sqi(k)]=o[k];return r;}
 function openLesson(cid,lid){show('learn');const c=Learn.all().find(x=>x.id===cid);if(!c)return;Learn.c=c;const li=Math.max(0,c.lessons.findIndex(l=>l.id===lid||l.id.startsWith(lid)));if(c.lessons.length)Learn.lesson(li);else Learn.course(cid);}
 document.addEventListener('ccrating',e=>{if(curView==='two'&&Two.g&&Two.g.id===e.detail.gid&&Two.view==='game')Two.draw();});
+// ================= HOME =================
+const Home={
+  render(){
+    const games=CCX.games(),RT=window.CCRating,RV=window.CCReview,r=RT?RT.current('me'):null;
+    const T=r&&r.title,next=RT?RT.TITLES.find(t=>t.min>(r?r.peak:0)):null;
+    const reviewed=games.filter(g=>g.review),last=games.find(g=>g.result!=='*'&&g.moves.length>=4);
+    const unfinished=games.find(g=>g.type==='2p'&&g.result==='*'&&g.moves.length);
+    const mine=RV?RV.mistakeCourse():{lessons:[]},mineN=mine.lessons.reduce((a,l)=>a+l.steps.length,0);
+    const P=LS.get('ccc_progress',{}),all=(window.COURSES||[]).flatMap(c=>c.lessons),done=all.filter(l=>P[l.id]).length;
+    // puzzle of the day: a mate puzzle chosen by date
+    const pz=(window.COURSES||[]).filter(c=>c.id==='mates'||c.id==='tactics').flatMap(c=>c.lessons).flatMap(l=>l.steps).filter(st=>st.type==='puzzle'&&st.fen);
+    const day=Math.floor(Date.now()/864e5),daily=pz.length?pz[day%pz.length]:null;
+    let lastHtml='';
+    if(last){const me=last.type==='engine'||last.type==='online'?(last.human||1):1,acc=last.review?last.review.acc[me]:null,
+        n=c=>last.review?last.review.moves.filter(m=>m.side===me&&m.cls===c).length:0;
+      lastHtml=`<div class="card homecard"><h3>Last game</h3><div class="list-item" id="hmLast"><div><b>${esc(last.white)}</b> vs <b>${esc(last.black)}</b>
+        <div class="small muted">${new Date(last.date).toLocaleString()} · ${esc(resultText(last))}${last.rated&&last.rated[me]?` · rating ${last.rated[me].d>=0?'+':''}${last.rated[me].d}`:''}</div>
+        <div class="small">${acc!=null?`📊 Accuracy <b>${acc}%</b> · ${n('blunder')} blunder${n('blunder')===1?'':'s'} · ${n('mistake')+n('miss')} mistake${n('mistake')+n('miss')===1?'':'s'}`:'Review being prepared…'}</div></div><span class="pill done">Review ›</span></div></div>`;}
+    $('viewHome').innerHTML=`
+      <div class="hero"><img src="img/logo.svg" alt="Shatranj logo"><h1>Shatranj</h1><p>Play on your real board. Learn from every move.</p>
+        ${r?`<span class="rchip">${RT.badgeHtml(T,true)} ${esc(r.name)} · <b>${r.r}</b>${next?` <span style="opacity:.75">· ${next.k} in ${Math.max(0,next.min-r.r)}</span>`:''}</span>`:''}</div>
+      <button class="primary bigplay" id="hmPlay">♞ Play on your board</button>
+      <div class="tiles">
+        <button class="tile" data-go="two"><span class="ic">👥</span><b>2 Players</b><small>Pass & play with names, clocks and ratings</small></button>
+        <button class="tile" data-go="learn"><span class="ic">📚</span><b>Courses</b><small>${done}/${all.length} lessons done</small></button>
+        <button class="tile" data-go="hist"><span class="ic">📜</span><b>History</b><small>${games.length} game${games.length===1?'':'s'} · ${reviewed.length} reviewed</small></button>
+        <button class="tile" data-go="patterns"><span class="ic">📈</span><b>My patterns</b><small>Recurring mistakes and what to work on</small></button>
+        <button class="tile" data-go="mine"><span class="ic">🧩</span><b>Fix my mistakes</b><small>${mineN} position${mineN===1?'':'s'} from your games</small></button>
+        <button class="tile" data-go="import"><span class="ic">🔗</span><b>Lichess / chess.com</b><small>Import and review your online games</small></button>
+        <button class="tile" data-go="daily"><span class="ic">🎯</span><b>Puzzle of the day</b><small>A new tactic or mate every day</small></button>
+        <button class="tile" data-go="rating"><span class="ic">🏆</span><b>My rating</b><small>${r?r.r:'1500'}${T?' · '+T.name:''}${next?` · next: ${next.k}`:''}</small></button>
+      </div>
+      ${unfinished?`<div class="card homecard"><h3>Continue</h3><div class="list-item" id="hmCont"><div><b>${esc(unfinished.white)}</b> vs <b>${esc(unfinished.black)}</b><div class="small muted">${unfinished.moves.length} moves played</div></div><span class="pill">Resume ▶</span></div></div>`:''}
+      ${lastHtml}
+      ${daily?`<div class="card homecard"><h3>Puzzle of the day</h3><div class="mbody" style="padding:0"><div class="cboard mini" id="hmPz"></div><div class="mtext">${daily.text}<div class="row"><button class="primary" id="hmPzGo">🧩 Solve it</button></div></div></div></div>`:''}`;
+    $('hmPlay').onclick=()=>show('play');
+    document.querySelectorAll('#viewHome [data-go]').forEach(b=>b.onclick=()=>{const g=b.dataset.go;
+      if(g==='patterns'){show('hist');window.CCReview&&CCReview.insights($('viewHist'));}
+      else if(g==='mine'){show('learn');Learn.course('mine');}
+      else if(g==='import'){show('hist');window.CCImport&&CCImport.view($('viewHist'));}
+      else if(g==='rating'){show('hist');window.CCRating&&CCRating.view($('viewHist'));}
+      else if(g==='daily'){if($('hmPzGo'))$('hmPzGo').click();}
+      else show(g);});
+    if($('hmLast'))$('hmLast').onclick=()=>{show('hist');Hist.open(last.id,0);};
+    if($('hmCont'))$('hmCont').onclick=()=>{show('two');Two.start(unfinished);};
+    if(daily){const p=fromFen(daily.fen);drawBoard($('hmPz'),p,{flip:p.turn===-1,last:daily.last?{f:sqi(daily.last.slice(0,2)),t:sqi(daily.last.slice(2,4))}:null});
+      $('hmPzGo').onclick=()=>{show('learn');Learn.playCustom({id:'__daily',icon:'🧩',title:'Puzzle of the day',desc:'',lessons:[{id:'daily-'+day,title:'Puzzle of the day',steps:[daily]}]},0);};}}
+};
+document.addEventListener('DOMContentLoaded',()=>{show('home');});
+$('brandHome').onclick=e=>{e.preventDefault();show('home');};
 window.CCLearn={fromFen,Learn,Two,Hist,show,openLesson,drawBoard,esc,LS,findUci,uciOf,fenOf,CCX};
 })();

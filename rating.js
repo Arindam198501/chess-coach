@@ -1,4 +1,4 @@
-// Chess Cam Coach: Elo rating and in-app titles
+// Shatranj: Elo rating and in-app titles
 (function(){
 const $=id=>document.getElementById(id);
 const X=window.CCLearn,LS=X.LS,esc=X.esc;
@@ -58,7 +58,7 @@ function graph(hist,start){
   const pts=[start,...hist.map(h=>h.after)];if(pts.length<2)return '<p class="muted small">Play rated games to see your rating graph.</p>';
   const W=600,H=140,lo=Math.min(...pts,...TITLES.filter(t=>t.min<=Math.max(...pts)+80).map(t=>t.min))-30,hi=Math.max(...pts)+30,y=v=>H-(v-lo)/(hi-lo)*H,x=i=>i/(pts.length-1)*W;
   let lines='';TITLES.forEach(T=>{if(T.min>lo&&T.min<hi)lines+=`<line x1="0" x2="${W}" y1="${y(T.min)}" y2="${y(T.min)}" stroke="${T.c}" stroke-dasharray="5 5" opacity=".7"/><text x="4" y="${y(T.min)-3}" fill="${T.c}" font-size="12">${T.k} ${T.min}</text>`;});
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:150px;background:#2a2e36;border-radius:8px">${lines}<polyline points="${pts.map((v,i)=>x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ')}" fill="none" stroke="#e2b450" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`;}
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:150px;background:var(--field);border-radius:8px">${lines}<polyline points="${pts.map((v,i)=>x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ')}" fill="none" stroke="#e2b450" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`;}
 function view(el){
   const st=store(),me=player(st,'me',myName()),peak=peakOf(me,st.start),T=titleOf(peak),next=TITLES.find(t=>t.min>peak);
   const w=me.hist.filter(h=>h.s===1).length,d=me.hist.filter(h=>h.s===0.5).length,l=me.hist.filter(h=>h.s===0).length;
@@ -71,7 +71,7 @@ function view(el){
     ${graph(me.hist,st.start)}
     <div class="titles">${TITLES.map(t=>`<div class="${peak>=t.min?'got':''}">${badgeHtml(t)} <span>${t.name}</span><b>${t.min}</b>${peak>=t.min?' ✓':''}</div>`).join('')}</div>
     <p class="small muted">Games against the engine are rated against the engine level you chose (Full strength counts as 3000). Two-player games rate both named players. Games where you used <b>take-backs or hints</b>, or very short games, are unrated. Titles use FIDE’s rating thresholds and are kept once earned, but they are this app’s own titles, not official FIDE titles.</p>
-    ${me.n===0?`<div class="row"><label>Starting rating <input id="rtStart" type="number" min="100" max="3000" value="${st.start}" style="width:90px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px"></label><button id="rtSave">Save</button></div><p class="small muted">Set this to your rating elsewhere (e.g. lichess or chess.com) before your first rated game.</p>`
+    ${me.n===0?`<div class="row"><label>Starting rating <input id="rtStart" type="number" min="100" max="3000" value="${st.start}" style="width:90px;background:var(--field);color:var(--text);border:1px solid var(--line2);border-radius:8px;padding:7px"></label><button id="rtSave">Save</button></div><p class="small muted">Set this to your rating elsewhere (e.g. lichess or chess.com) before your first rated game.</p>`
       :`<div class="row"><button id="rtReset">Reset my rating</button></div>`}</div>
     ${me.hist.length?`<div class="card"><h2>Recent rated games</h2>${me.hist.slice(-12).reverse().map(h=>`<div class="list-item" data-g="${h.gid}"><div>${h.s===1?'✅ Win':h.s===0?'❌ Loss':'½ Draw'} vs ${esc(h.opp)} (${h.oppR})<div class="small muted">${new Date(h.t).toLocaleString()}</div></div><b style="color:${h.after>=h.before?'#5fbf7a':'#e06c5f'}">${h.after>=h.before?'+':''}${h.after-h.before} → ${h.after}</b></div>`).join('')}</div>`:''}
     ${others.length?`<div class="card"><h2>Two-player ratings</h2>${others.map(p=>{const t=titleOf(peakOf(p,st.start));return `<div class="list-item"><div>${badgeHtml(t,true)} <b>${esc(p.name)}</b><div class="small muted">${p.n} games</div></div><b>${p.r}</b></div>`;}).join('')}</div>`:''}`;

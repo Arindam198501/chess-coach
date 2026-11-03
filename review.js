@@ -1,4 +1,4 @@
-// Chess Cam Coach: game review (analysis, feedback, patterns, puzzles from your mistakes)
+// Shatranj: game review (analysis, feedback, patterns, puzzles from your mistakes)
 (function(){
 const $=id=>document.getElementById(id);
 const A=window.CCApp,X=window.CCLearn;
@@ -212,7 +212,7 @@ function evalGraph(rv,cur){
   let path=`M0,${H} `;rv.evals.forEach((s,i)=>path+=`L${(i/N*W).toFixed(1)},${y(s).toFixed(1)} `);path+=`L${W},${H} Z`;
   let dots='';rv.moves.forEach(m=>{if(isErr(m)||m.cls==='brilliant'||m.cls==='great'){const x=((m.i+1)/N*W).toFixed(1);dots+=`<circle cx="${x}" cy="${y(rv.evals[m.i+1]).toFixed(1)}" r="5" fill="${CLS[m.cls].c}" stroke="#111" data-ply="${m.i+1}" style="cursor:pointer"/>`;}});
   const cx=cur!=null?(cur/N*W).toFixed(1):null;
-  return `<svg viewBox="0 0 ${W} ${H}" class="egraph" preserveAspectRatio="none" style="width:100%;height:90px;display:block;border-radius:8px;background:#2a2e36;margin-top:8px">
+  return `<svg viewBox="0 0 ${W} ${H}" class="egraph" preserveAspectRatio="none" style="width:100%;height:90px;display:block;border-radius:8px;background:var(--field);margin-top:8px">
     <path d="${path}" fill="#e8e6e1" opacity=".9"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="#888" stroke-dasharray="4 4"/>
     ${cx?`<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#e2b450" stroke-width="2"/>`:''}${dots}</svg>
     <div class="small muted" style="display:flex;justify-content:space-between"><span>White ahead ↑</span><span>tap a dot to jump to that moment</span><span>Black ahead ↓</span></div>`;}
@@ -290,7 +290,7 @@ function insights(el,who){
   const habCount={};hab.forEach(h=>habCount[h.key]=(habCount[h.key]||0)+1);
   const HAB={earlyQueen:'Queen out too early',samePiece:'Same piece moved twice in the opening',flankPawns:'Too many early edge-pawn moves',kingWalk:'King moved, losing castling',slowDev:'Slow development (minor pieces at home on move 10)',lateCastle:'Castled late / king stuck in the centre'};
   const maxI=Math.max(1,...issues.map(i=>i.n)),maxP=Math.max(1,...phases.map(p=>p[1]));
-  const spark=(()=>{if(accs.length<2)return '';const W=300,H=60,pts=accs.slice(-20).map((a,i,arr)=>`${(i/(arr.length-1)*W).toFixed(1)},${(H-a/100*H).toFixed(1)}`).join(' ');return `<svg viewBox="0 0 300 60" style="width:100%;height:60px;background:#2a2e36;border-radius:8px"><polyline points="${pts}" fill="none" stroke="#e2b450" stroke-width="2.5"/></svg><div class="small muted">Accuracy over your last ${Math.min(20,accs.length)} reviewed games</div>`;})();
+  const spark=(()=>{if(accs.length<2)return '';const W=300,H=60,pts=accs.slice(-20).map((a,i,arr)=>`${(i/(arr.length-1)*W).toFixed(1)},${(H-a/100*H).toFixed(1)}`).join(' ');return `<svg viewBox="0 0 300 60" style="width:100%;height:60px;background:var(--field);border-radius:8px"><polyline points="${pts}" fill="none" stroke="#e2b450" stroke-width="2.5"/></svg><div class="small muted">Accuracy over your last ${Math.min(20,accs.length)} reviewed games</div>`;})();
   const top=issues.slice(0,3);
   el.innerHTML=`<div class="card"><button id="inBack">← All games</button><h2 style="margin-top:12px">📈 Patterns across your games</h2>
     ${keys.length>1?`<label>Player <select id="inWho">${keys.map(k=>`<option value="${esc(k)}" ${k===who?'selected':''}>${esc(people[k].name)} (${people[k].list.length})</option>`).join('')}</select></label>`:''}
