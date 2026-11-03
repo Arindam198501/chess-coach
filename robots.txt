@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://arindam198501.github.io/chess-coach/sitemap.xml

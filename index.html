@@ -4,7 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#24170f">
-<title>Shatranj · chess coach</title>
+<title>Shatranj: chess coach for your real board · play, learn and review your games</title>
+<meta name="description" content="Shatranj is a free chess coach. Play on your real chessboard and the phone camera reads your moves, play Stockfish or a friend, get a full game review after every game, take opening, tactics and endgame courses, and import Lichess and chess.com games.">
+<meta name="keywords" content="chess, shatranj, chess coach, real chessboard, chess camera, chess game review, stockfish, chess puzzles, chess courses, lichess, chess.com, chess openings">
+<link rel="canonical" href="https://arindam198501.github.io/chess-coach/">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Shatranj">
+<meta property="og:title" content="Shatranj: chess coach for your real board">
+<meta property="og:description" content="Play on your real chessboard with your phone camera, get a review after every game, and learn with courses and puzzles.">
+<meta property="og:url" content="https://arindam198501.github.io/chess-coach/">
+<meta property="og:image" content="https://arindam198501.github.io/chess-coach/img/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Shatranj: chess coach for your real board">
+<meta name="twitter:description" content="Play on your real chessboard with your phone camera, get a review after every game, and learn with courses and puzzles.">
+<meta name="twitter:image" content="https://arindam198501.github.io/chess-coach/img/og.png">
+<!-- GOOGLE_SITE_VERIFICATION -->
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Shatranj","url":"https://arindam198501.github.io/chess-coach/","image":"https://arindam198501.github.io/chess-coach/img/og.png","applicationCategory":"GameApplication","genre":"Chess","operatingSystem":"Any (web browser)","browserRequirements":"Requires a modern browser; camera for real-board play","offers":{"@type":"Offer","price":"0","priceCurrency":"INR"},"description":"Free chess coach: play on your real chessboard with camera move detection, play Stockfish or a friend, get game reviews with blunders and key moments, courses on openings, tactics and endgames, and import Lichess and chess.com games.","featureList":["Camera reads moves on a real chessboard","Stockfish 19 engine, 1400 to full strength","Game review after every game","Elo rating and titles","Opening, middlegame, tactics and endgame courses","Mate in 1, 2 and 3 puzzles","Two-player mode with clocks","Import Lichess and chess.com games"]}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="img/logo.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="img/icon32.png">
@@ -156,6 +173,8 @@
   .homecard{margin-top:12px}
   .homecard h3{margin:0 0 6px;font-family:Cinzel,Georgia,serif;color:#d9b977;letter-spacing:1px}
   #viewHome{max-width:820px}
+  #about{max-width:820px;color:var(--muted);font-size:14px;line-height:1.55;padding:6px 16px 26px}#about h2{font-size:16px}#about b{color:var(--text)}
+  body.notHome #about{display:none}
   #tabs{display:flex;gap:6px;padding:8px 12px 0;max-width:1400px;margin:0 auto;overflow-x:auto}
   #tabs button{border-radius:10px 10px 0 0;border-bottom:none;white-space:nowrap;padding:9px 12px}
   @media (max-width:420px){#tabs{gap:3px;padding:8px 6px 0}#tabs button{padding:8px 8px;font-size:14px}}
@@ -256,6 +275,17 @@
   <button data-v="home" class="on"><span class="ti">🏠</span><span class="tl">Home</span></button><button data-v="play"><span class="ti">♞</span><span class="tl">Play</span></button><button data-v="two"><span class="ti">👥</span><span class="tl">2 Players</span></button><button data-v="learn"><span class="ti">📚</span><span class="tl">Learn</span></button><button data-v="hist"><span class="ti">📜</span><span class="tl">History</span></button>
 </nav>
 <section id="viewHome" class="view"></section>
+<footer id="about" class="view">
+  <h2>About Shatranj</h2>
+  <p><b>Shatranj</b> is a free chess coach that works with your <b>real chessboard</b>. Put your phone above the board: the camera reads your moves, and the Stockfish chess engine replies on screen and out loud. After every game you get a <b>game review</b>: accuracy, blunders, mistakes and brilliant moves, key moments explained in plain words, and what to learn from the game.</p>
+  <ul>
+    <li>Play against Stockfish 19 from about 1400 Elo up to full strength, or two players on one screen, with chess clocks.</li>
+    <li>Elo rating with titles: Candidate Master, FIDE Master, International Master and Grandmaster (in-app titles).</li>
+    <li>Courses: opening repertoire (Ruy Lopez, Italian, Sicilian Najdorf, Queen’s Gambit Declined, King’s Indian, Caro-Kann, London), middlegame strategy, tactics, endgames, and mate in 1, 2 and 3 puzzles.</li>
+    <li>Import and review your games from Lichess and chess.com, and find your recurring mistakes.</li>
+  </ul>
+  <p class="small muted">Works in Chrome on Android phones and on laptops. No sign-up. Your games stay on your device.</p>
+</footer>
 <main id="viewPlay" class="hide">
   <section id="camPanel">
     <div id="camTop"><h2>Camera</h2><button id="camClose">✕ Back to game</button></div>

@@ -143,6 +143,7 @@ function show(v){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $('viewPlay').classList.toggle('hide',v!=='play');
   $('viewHome').classList.toggle('hide',v!=='home');
+  document.body.classList.toggle('notHome',v!=='home');
   ['two','learn','hist'].forEach(x=>$('view'+x[0].toUpperCase()+x.slice(1)).classList.toggle('hide',v!==x));
   document.body.classList.toggle('otherview',v!=='play');
   if(v==='home')Home.render();if(v==='two')Two.render();if(v==='learn')Learn.home();if(v==='hist'){Hist.sel=null;Hist.list();}
