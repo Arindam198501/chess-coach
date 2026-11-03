@@ -162,6 +162,21 @@
   .bar{display:grid;grid-template-columns:minmax(110px,42%) 1fr 34px;gap:8px;align-items:center;margin:6px 0;font-size:13.5px}
   .bar>div{height:10px;background:#2a2e36;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
   .bar b{text-align:right}
+  .tbadge{display:inline-block;color:#fff;font-weight:800;font-size:13px;padding:1px 6px;border-radius:5px;letter-spacing:.5px;vertical-align:middle}
+  .tbadge.sm{font-size:11px;padding:0 5px}
+  .tbig{display:inline-block;color:#fff;font-weight:900;font-size:30px;padding:4px 14px;border-radius:10px;letter-spacing:1px}.tbig.sm{font-size:18px;padding:2px 10px}
+  #ratingBadge{margin-left:8px;padding:5px 10px;font-size:13px;border-radius:20px}
+  .titles{display:grid;gap:6px;margin:12px 0}.titles>div{display:flex;align-items:center;gap:8px;opacity:.55}.titles>div.got{opacity:1}.titles span:not(.tbadge){flex:1}.tbadge{flex:none;min-width:30px;text-align:center}
+  #rateToast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,150%);background:#262a31;border:1px solid var(--accent);border-radius:12px;padding:10px 16px;z-index:60;transition:transform .3s;max-width:92vw;font-size:15px;box-shadow:0 8px 24px #000a}
+  #rateToast.show{transform:translate(-50%,0)}
+  #titleModal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:70}#titleModal.show{display:flex}
+  #titleModal .tbox{background:var(--panel);border:2px solid var(--accent);border-radius:16px;padding:22px;text-align:center;max-width:340px}
+  .ctable{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px;margin:12px 0 4px}
+  .crow{display:flex;align-items:center;gap:8px;font-size:14px;padding:3px 0}.crow span{flex:1}.crow b{font-size:16px}.crow.zero{opacity:.45}
+  .mbadge{vertical-align:middle;flex:none}
+  .sqbadge{position:absolute;top:-2%;right:-2%;width:42%;height:42%;z-index:8;pointer-events:none;filter:drop-shadow(0 1px 2px #000a)}
+  .sqbadge svg{width:100%;height:100%}
+  .sq{overflow:visible}
   .setupBox{background:#20242b;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
   body.playing:not(.showSet) #setupBox{display:none}
   .clk{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:#20242b;border:2px solid #3a3f49;min-width:0}
@@ -242,6 +257,7 @@
       </select></label>
       <label>Your name <input id="yourName" placeholder="You" maxlength="24" style="width:110px;background:#2a2e36;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:7px 9px;font:inherit"></label>
       <label>Names <select id="selNames"><option value="indian" selected>Elephant · Camel · Horse</option><option value="intl">Rook · Bishop · Knight</option></select></label>
+      <div id="ratePrev" class="small" style="width:100%;text-align:center"></div>
       <label>Board <select id="selTheme"><option value="marble">My marble board</option><option value="classic">Classic wood</option></select></label>
       <label><input type="checkbox" id="chkVoice" checked> Speak moves</label>
     </div>
@@ -533,8 +549,13 @@ function castleButtons(){
     b.innerHTML=`🏰 ${mode==='none'?'Castle':'I castled'} ${k?'king side (O-O)':'queen side (O-O-O)'}`;
     b.title=mode==='none'?'Castle':'First castle on your real board (king and rook), then tap here';
     b.onclick=()=>{if(state!=='human')return;const mm=legal(game).find(x=>x.f===m.f&&x.t===m.t);if(mm)commitHuman(mm);};row.appendChild(b);});}
+function ratePreview(){const el=$('ratePrev');if(!el||!window.CCRating)return;const p=CCRating.preview(+$('selLevel').value||3000),c=CCRating.current('me');
+  el.innerHTML=`🏆 Rated game · your rating <b>${p.r}</b>${c.title?' ('+c.title.k+')':''} · win <span style="color:#5fbf7a">+${p.win}</span> / draw ${p.draw>=0?'+':''}${p.draw} / loss <span style="color:#e06c5f">${p.loss}</span> <span class="muted">(take-backs or hints make it unrated)</span>`;}
+document.addEventListener('ccrating',e=>{if(e.detail.gid===gameId){const c=e.detail.ch[humanColor];if(c)$('bigMoveSub').textContent=($('bigMoveSub').textContent?$('bigMoveSub').textContent+' · ':'')+`Rating ${c.before} → ${c.after} (${c.d>=0?'+':''}${c.d})`;}ratePreview();});
+document.addEventListener('DOMContentLoaded',()=>{try{ratePreview();}catch(e){}});
 function updateButtons(){
   castleButtons();
+  if(state==='idle')ratePreview();
   $('btnSet').classList.toggle('hide',state==='idle');$('btnReview').classList.toggle('hide',!(state==='over'&&hist.length>=4));if(state==='idle')document.body.classList.remove('showSet');
   if(clock)renderClocks();
   document.body.classList.toggle('playing',state!=='idle');document.body.classList.toggle('nocam',mode==='none');
@@ -551,7 +572,7 @@ function updateButtons(){
 // ================= game flow =================
 let lastPlyAt=0;
 function pushMove(m){const s=san(game,m);const u=make(game,m);const now=Date.now();hist.push({m,u,san:s,ms:lastPlyAt?now-lastPlyAt:null});lastPlyAt=now;saveGame();return s;}
-let gameId=null,gameResult='*',gameDate=null,gameWhy='',clock=null,gameTC=null,lastMoveDelay=0;
+let gameUnrated=null,gameId=null,gameResult='*',gameDate=null,gameWhy='',clock=null,gameTC=null,lastMoveDelay=0;
 function renderClocks(){const el=$('playClocks');if(!clock){el.classList.add('hide');$('btnPause').classList.add('hide');return;}
   el.classList.remove('hide');const me=yourName(),eng='Engine';
   el.innerHTML=CCClock.clockHtml(clock,[{side:-humanColor,label:'🤖 '+eng},{side:humanColor,label:'🙂 '+me.replace(/[<>&]/g,'')}]);
@@ -567,7 +588,7 @@ function yourName(){return ($('yourName').value||'').trim()||'You';}
 function saveGame(){
   if(!window.CCX||!gameId||!hist.length)return;
   const eng='Stockfish '+($('selLevel').value==='0'?'(full)':'~'+$('selLevel').value),me=yourName();
-  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,tc:gameTC?gameTC.label:null,why:gameWhy||undefined,human:humanColor,ms:hist.map(h=>h.ms),
+  CCX.saveGame({id:gameId,type:'engine',date:gameDate,white:humanColor===1?me:eng,black:humanColor===1?eng:me,result:gameResult,tc:gameTC?gameTC.label:null,why:gameWhy||undefined,human:humanColor,engineElo:+$('selLevel').value||3000,unrated:gameUnrated||undefined,ms:hist.map(h=>h.ms),
     moves:hist.map(h=>h.san),uci:hist.map(h=>FILES[h.m.f&7]+((h.m.f>>3)+1)+FILES[h.m.t&7]+((h.m.t>>3)+1)+(h.m.p?' pnbrq'[h.m.p]:''))});}
 function gameOverCheck(){
   const r=gameOverCheck0();if(r&&clock)clock.stop();if(r)setCard('over','Game over',$('status').textContent.split('.')[0],'');return r;}
@@ -585,7 +606,7 @@ function gameOverCheck0(){
 
 function startGame(){
   game=startPos();hist=[];removeSq=-1;lastEngine=null;selected=-1;hintMove=null;lastEval='';
-  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();gameWhy='';lastPlyAt=Date.now();
+  gameId=window.CCX?CCX.newId():null;gameResult='*';gameDate=new Date().toISOString();gameWhy='';gameUnrated=null;lastPlyAt=Date.now();
   if(clock)clock.stop();gameTC=window.CCClock?CCClock.parseTC($('selTimer').value,$('tMin'),$('tInc')):null;
   clock=gameTC?new CCClock.Clock(gameTC,onFlag,renderClocks):null;if(clock)clock.start(1);
   humanColor=+$('selColor').value;rebuild();
@@ -666,7 +687,7 @@ function askPromo(color){
 
 function undo(){
   if(!hist.length||state==='thinking')return;
-  removeSq=-1;lastEngine=null;lastEngineTx=null;
+  removeSq=-1;lastEngine=null;lastEngineTx=null;gameUnrated='take-back';
   while(hist.length){const h=hist.pop();unmake(game,h.m,h.u);if(game.turn===humanColor)break;}
   gameResult='*';gameWhy='';saveGame();
   if(clock){clock.flagged=false;clock.start(game.turn);}
@@ -676,7 +697,7 @@ function undo(){
   renderBoard();}
 
 function hint(){
-  if(state!=='human')return;
+  if(state!=='human')return;gameUnrated=gameUnrated||'hint used';
   setStatus('Looking for a good move…');
   runEngine(game,0,1500).then(r=>{if(state!=='human'||!r)return;const m=findLegal(r);if(!m)return;hintMove=m;setStatus(`💡 Hint: <b>${mt(m)}</b>`);renderBoard(curHeat);});}
 
@@ -1089,6 +1110,7 @@ $('btnSnap').onclick=saveSnapshot;
 $('btnHint').onclick=hint;
 $('btnNew').onclick=()=>{if(clock){clock.stop();clock=null;}renderClocks();state='idle';removeSq=-1;lastEngine=null;lastEngineTx=null;hintMove=null;game=startPos();hist=[];lastEval='';clearBig();humanColor=+$('selColor').value;rebuild();setStep(H?3:mode==='none'?1:2);
   setStatus('Set up the starting position on your board'+(mode==='photo'?', take a photo,':'')+' then press <b>Start game</b>.');renderBoard();};
+$('selLevel').onchange=()=>ratePreview();
 $('selColor').onchange=()=>{if(state==='idle'){humanColor=+$('selColor').value;rebuild();renderBoard();}};
 window.addEventListener('resize',()=>{sizeWrap();drawOverlay();});
 video.addEventListener('loadedmetadata',sizeWrap);
@@ -1105,6 +1127,8 @@ window.__ccc={get clock(){return clock&&{w:clock.left(1),b:clock.left(-1),side:c
 <script src="courses.js"></script>
 <script src="extras.js"></script>
 <script src="review.js"></script>
+<script src="rating.js"></script>
+<script src="import.js"></script>
 <script>
 (function(){const slot=document.getElementById('timerSlot');let v='none';try{v=JSON.parse(localStorage.getItem('ccc_timer')||'"none"');}catch(e){}
   slot.innerHTML=CCClock.timerSelectHtml('selTimer',v);const sel=document.getElementById('selTimer'),cu=document.getElementById('timerCustom');

@@ -97,6 +97,21 @@ Every finished game (vs the engine or two players) is analysed automatically by 
 - **📈 My patterns** (in History): your recurring mistakes across all games, which phase they happen in (opening, middlegame or endgame), which pieces you leave hanging, your opening habits, an accuracy trend and your **top 3 things to work on**.
 - **🧩 From your games** (in Learn): every position where you went wrong becomes a puzzle.
 
+## Rating and titles
+
+- Every finished game gets an **Elo rating** change. Games against the engine are rated against the engine level (Full strength = 3000), and two-player games rate both named players. You start at 1500; you can set your own starting rating under **🏆 My rating** before your first rated game.
+- Games with **take-backs or hints**, and very short games, are unrated.
+- **Titles:** Candidate Master (2200), FIDE Master (2300), International Master (2400) and Grandmaster (2500), the same thresholds FIDE uses. Once earned you keep them. They are this app's own titles, not official FIDE titles.
+- Tap the rating badge at the top to see your rating graph, progress to the next title, and recent rated games.
+
+## Move icons in the review
+
+Each move is classed as **Brilliant** (a strong sacrifice), **Great** (the only good move), **Best**, **Excellent**, **Good**, **Book**, **Inaccuracy**, **Mistake**, **Miss** (a chance you didn't take) or **Blunder**. Each class has its own coloured badge, shown in the move list, on the board and in a summary table per player. (The badges are drawn for this app; they are similar in style, not copies.)
+
+## Import from Lichess and chess.com
+
+**📜 History → 🔗 Import Lichess / chess.com**: enter your username(s), fetch your recent public games, tick the ones you want, and they are imported and reviewed automatically. No password is needed. You can also paste PGN from any site. Imported games count towards **My patterns**, but not towards your rating in this app. Chess960 and games from custom positions are skipped.
+
 ## If the camera doesn't read your moves
 
 During a game, the line above the move card shows what the camera is doing ("Watching…", "Movement seen…", "reading…"). If a move isn't recognised, tap **📸 Save snapshot**. It saves an image of what the camera compared, which you can send for diagnosis.

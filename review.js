@@ -15,11 +15,13 @@ const AN={w:null,ready:null,listeners:[],q:Promise.resolve(),
     this.ready=new Promise(res=>{let done=false;const fin=v=>{if(!done){done=true;res(v);}};
       try{this.w=new Worker('engine/stockfish-19-lite-single.js');}catch(e){return fin(false);}
       const to=setTimeout(()=>fin(false),30000);
-      this.w.onmessage=e=>{const l=String(e.data);if(l==='uciok'){this.w.postMessage('setoption name Hash value 32');this.w.postMessage('isready');}else if(l==='readyok'){clearTimeout(to);fin(true);}this.listeners.slice().forEach(f=>f(l));};
+      this.w.onmessage=e=>{const l=String(e.data);if(l==='uciok'){this.w.postMessage('setoption name Hash value 32');this.w.postMessage('setoption name MultiPV value 2');this.w.postMessage('isready');}else if(l==='readyok'){clearTimeout(to);fin(true);}this.listeners.slice().forEach(f=>f(l));};
       this.w.onerror=()=>fin(false);this.w.postMessage('uci');});
     return this.ready;},
-  analyse(fen,depth,ms){const job=()=>new Promise(res=>{const out={cp:0,mate:null,pv:[],best:null};
-      const f=l=>{if(l.startsWith('info')&&l.includes(' pv ')){const sc=l.match(/score (cp|mate) (-?\d+)/);if(sc){if(sc[1]==='cp'){out.cp=+sc[2];out.mate=null;}else out.mate=+sc[2];}out.pv=l.split(' pv ')[1].trim().split(/\s+/);}
+  analyse(fen,depth,ms){const job=()=>new Promise(res=>{const out={cp:0,mate:null,pv:[],best:null,s2:null};
+      const f=l=>{if(l.startsWith('info')&&l.includes(' pv ')){const sc=l.match(/score (cp|mate) (-?\d+)/),mp=+((l.match(/ multipv (\d+)/)||[0,1])[1]);
+          if(mp===2){if(sc)out.s2=sc[1]==='cp'?+sc[2]:(+sc[2]>0?100000-+sc[2]:-100000-+sc[2]);return;}
+          if(sc){if(sc[1]==='cp'){out.cp=+sc[2];out.mate=null;}else out.mate=+sc[2];}out.pv=l.split(' pv ')[1].trim().split(/\s+/);}
         else if(l.startsWith('bestmove')){this.listeners.splice(this.listeners.indexOf(f),1);out.best=l.split(' ')[1];res(out);}};
       this.listeners.push(f);this.w.postMessage('position fen '+fen);this.w.postMessage(`go depth ${depth} movetime ${ms}`);});
     const p=this.q.then(job);this.q=p.catch(()=>{});return p;}};
@@ -36,7 +38,49 @@ function forkTargets(p1,om,me){const q=clonePos(p1);const u=make(q,om),tg=[];if(
   const seen=new Set();caps.forEach(x=>{if(!seen.has(x.t)){seen.add(x.t);tg.push(A.pname(x.c));}});return tg;}
 function noOf(ply){return Math.floor(ply/2)+1;}
 function moveLabel(ply,san){return `${noOf(ply)}${ply%2===0?'.':'…'} ${san}`;}
-const CLS={best:{sym:'',name:'Best move',c:'#5fbf7a'},good:{sym:'',name:'Good',c:''},ok:{sym:'',name:'OK',c:''},inacc:{sym:'?!',name:'Inaccuracy',c:'#e2b450'},mistake:{sym:'?',name:'Mistake',c:'#f08a3c'},blunder:{sym:'??',name:'Blunder',c:'#e06c5f'}};
+const CLS={
+  brilliant:{sym:'!!',name:'Brilliant',c:'#1baca6',g:'!!'},
+  great:{sym:'!',name:'Great move',c:'#5b8bb5',g:'!'},
+  best:{sym:'',name:'Best move',c:'#7fb84a',g:'★'},
+  excellent:{sym:'',name:'Excellent',c:'#97c25f',g:'👍'},
+  good:{sym:'',name:'Good',c:'#8fa78a',g:'✓'},
+  book:{sym:'',name:'Book move',c:'#a88865',g:'📖'},
+  inacc:{sym:'?!',name:'Inaccuracy',c:'#e8b33f',g:'?!'},
+  mistake:{sym:'?',name:'Mistake',c:'#f08a3c',g:'?'},
+  miss:{sym:'?',name:'Miss',c:'#ee6b5f',g:'✕'},
+  blunder:{sym:'??',name:'Blunder',c:'#d93a32',g:'??'}};
+CLS.ok=CLS.good; // reviews made before the new categories
+const ORDER=['brilliant','great','best','excellent','good','book','inacc','mistake','miss','blunder'];
+const isErr=m=>m.cls==='mistake'||m.cls==='miss'||m.cls==='blunder';
+// round badge: coloured disc with a white symbol (drawn here, not copied from any site)
+function badge(cls,size){const c=CLS[cls]||CLS.good;size=size||20;
+  const star='<path d="M10 3.2l1.9 4 4.3.5-3.2 3 .9 4.3L10 12.8 6.1 15l.9-4.3-3.2-3 4.3-.5z" fill="#fff"/>';
+  const thumb='<path d="M6.2 9h2.2V15H6.2zM9.3 9l2.3-4.2c.8-.1 1.5.5 1.4 1.4L12.6 8.4h2.6c.8 0 1.3.7 1.1 1.4l-1.1 4.2c-.2.6-.7 1-1.3 1H9.3z" fill="#fff"/>';
+  const check='<path d="M5.5 10.3l3 3 6-6.3" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+  const book='<path d="M4.8 6.2c1.8-.6 3.6-.4 5.2.8v8c-1.6-1.1-3.4-1.3-5.2-.8zM15.2 6.2c-1.8-.6-3.6-.4-5.2.8v8c1.6-1.1 3.4-1.3 5.2-.8z" fill="#fff"/>';
+  const cross='<path d="M6.5 6.5l7 7M13.5 6.5l-7 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>';
+  const txt=t=>`<text x="10" y="14.2" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="${t.length>1?10.5:12.5}" fill="#fff">${t}</text>`;
+  const inner=cls==='best'?star:cls==='excellent'?thumb:(cls==='good'||cls==='ok')?check:cls==='book'?book:cls==='miss'?cross:txt(c.g);
+  return `<svg class="mbadge" width="${size}" height="${size}" viewBox="0 0 20 20" aria-label="${c.name}"><circle cx="10" cy="10" r="9.3" fill="${c.c}" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>${inner}</svg>`;}
+
+// a sacrifice: the moved piece (knight or more) can be taken and the trade loses material, yet the move is best
+function isSacrifice(p0,m,p1){
+  if(m.pt<2||m.pt>5)return false;const me=p0.turn,opp=-me,v=VALS[m.pt];
+  if(m.c&&VALS[m.c]>=v)return false;
+  if(!attacked(p1,m.t,opp))return false;
+  // cheapest enemy attacker
+  const q=clonePos(p1);let cheapest=99;for(const x of gen(q,true))if(x.t===m.t)cheapest=Math.min(cheapest,VALS[x.pt]||10);
+  const defended=attacked(p1,m.t,me);
+  return (!defended||cheapest<v)&&(v-(m.c?VALS[m.c]:0))>=2;}
+function isRecapture(M,i){return i>0&&M[i-1].t===M[i].t&&M[i-1].c;}
+let BOOK=null;
+function isBook(uci,i){
+  if(!BOOK){BOOK=new Set();const add=arr=>{let k='';arr.forEach(u=>{k+=(k?' ':'')+u;BOOK.add(k);});};
+    (window.COURSES||[]).forEach(c=>c.lessons.forEach(l=>l.steps.forEach(st=>{if(st.type==='line')add(st.moves.map(x=>x[0]));if(st.type==='drill')add(st.moves);})));
+    ['e2e4','d2d4','c2c4','g1f3','g2g3','b2b3','f2f4'].forEach(u=>BOOK.add(u));
+    ['e2e4 e7e5','e2e4 c7c5','e2e4 e7e6','e2e4 c7c6','e2e4 d7d5','e2e4 d7d6','e2e4 g7g6','e2e4 g8f6','d2d4 d7d5','d2d4 g8f6','d2d4 e7e6','d2d4 f7f5','d2d4 d7d6','c2c4 e7e5','c2c4 g8f6','c2c4 c7c5','g1f3 d7d5','g1f3 g8f6']
+      .forEach(u=>BOOK.add(u));}
+  if(i>24)return false;return BOOK.has(uci.slice(0,i+1).join(' '));}
 
 // ---------- what went wrong in a move ----------
 function explain(P,M,E,mv){
@@ -90,27 +134,39 @@ async function compute(g,onProg){
       if(ok)r=await AN.analyse(X.fenOf(p,i),13,650);
       else{const q=await A.SF.search(X.fenOf(p,i),0,500);r={cp:q.score,mate:null,best:q.uci,pv:[q.uci]};}
       const s=r.mate!=null?(r.mate>0?100000-r.mate:r.mate<0?-100000-r.mate:-100000):r.cp;
-      E.push({s,best:r.best,pv:(r.pv||[]).slice(0,8)});}
+      E.push({s,s2:r.s2,best:r.best,pv:(r.pv||[]).slice(0,8)});}
     onProg&&onProg(i+1,N+1);}
   const moves=[];
   for(let i=0;i<N;i++){const p=P[i],m=M[i],side=p.turn,uci=X.uciOf(m),isBest=E[i].best===uci;
     const before=E[i].s,after=-E[i+1].s,wB=wp(clampCp(before)),wA=wp(clampCp(after));
     let loss=isBest?0:Math.max(0,wB-wA);
     if(before>50000&&after>50000)loss=Math.min(loss,0.04); // still mating: fine
-    const cls=loss>=0.15?'blunder':loss>=0.10?'mistake':loss>=0.05?'inacc':isBest?'best':loss<0.02?'good':'ok';
+    let cls=loss>=0.15?'blunder':loss>=0.10?'mistake':loss>=0.05?'inacc':isBest?'best':loss<0.02?'excellent':'good';
+    if(loss<0.02){
+      if(isSacrifice(p,m,P[i+1])&&after>-100&&wB<0.97)cls='brilliant';
+      else if(E[i].s2!=null&&wB<0.95&&wp(clampCp(before))-wp(clampCp(E[i].s2))>=0.15&&!(m.c&&VALS[m.c]>=3&&isRecapture(M,i)))cls='great';
+      else if(loss<0.05&&isBook(g.uci,i))cls='book';}
+    else if(loss<0.05&&isBook(g.uci,i))cls='book';
     const acc=Math.max(0,Math.min(100,103.1668*Math.exp(-0.04354*(wB-wA)*100)-3.1669));
     const mv={i,side,san:g.moves[i]||A.san(p,m),uci,best:E[i].best,before,after,loss:+loss.toFixed(3),cls,acc:Math.round(acc),phase:phaseOf(p,i),ms:g.ms?g.ms[i]:null};
-    if(cls==='inacc'||cls==='mistake'||cls==='blunder')Object.assign(mv,explain(P,M,E,mv));
+    if(cls==='inacc'||cls==='mistake'||cls==='blunder'){Object.assign(mv,explain(P,M,E,mv));
+      // a missed chance (the opponent's last move gave you something, or you missed a win/mate) is a "Miss"
+      if(cls!=='inacc'&&(mv.motif==='missedWin'||mv.motif==='missedTactic'||mv.motif==='missedMate'))mv.cls='miss';}
     moves.push(mv);}
   const acc={},hab={};
   for(const s of [1,-1]){const a=moves.filter(m=>m.side===s);acc[s]=a.length?Math.round(a.reduce((t,m)=>t+m.acc,0)/a.length):null;hab[s]=habits(P,M,g,s);}
-  return {v:1,at:Date.now(),evals:E.map((e,i)=>e.s*P[i].turn),moves,acc,hab};}
+  return {v:2,at:Date.now(),evals:E.map((e,i)=>e.s*P[i].turn),moves,acc,hab};}
 
 // ---------- who is "you" in a game ----------
 function myName(){try{return (localStorage.getItem('ccc_yourname')||'').trim()||'You';}catch(e){return 'You';}}
 function humanSides(g){
   if(g.type==='engine')return [g.human||(String(g.white).startsWith('Stockfish')?-1:1)];
+  if(g.type==='online'&&g.human)return [g.human];
   return [1,-1];}
+// who a side is, for patterns: "me" for you in engine/online games and when a 2-player name is yours
+function personKey(g,side){const nm=String(nameOf(g,side)).toLowerCase();
+  if((g.type==='engine'||g.type==='online')&&side===g.human)return 'me';
+  return nm===myName().toLowerCase()||nm==='you'?'me':nm;}
 function nameOf(g,side){return side===1?g.white:g.black;}
 
 // ---------- lessons for one side of one game ----------
@@ -129,7 +185,7 @@ const TIPS={
   opening_phase:{t:'Mistakes in the opening',tip:'Learn the ideas of one opening for White and one for Black, and follow the principles when you leave known lines.',go:['openings','op-italian']}};
 function issuesFor(moves,hab){
   const sc={},cnt={};const add=(k,w)=>{sc[k]=(sc[k]||0)+w;cnt[k]=(cnt[k]||0)+1;};
-  for(const m of moves){if(!m.motif)continue;const w=m.cls==='blunder'?3:m.cls==='mistake'?2:0.7;
+  for(const m of moves){if(!m.motif)continue;const w=m.cls==='blunder'?3:(m.cls==='mistake'||m.cls==='miss')?2:0.7;
     if(m.motif!=='positional'||m.cls!=='inacc')add(m.motif,w);
     if(m.phase==='endgame'&&m.cls!=='inacc')add('endgame',w*0.8);
     if(m.phase==='opening'&&m.cls!=='inacc')add('opening_phase',w*0.25);
@@ -139,7 +195,7 @@ function issuesFor(moves,hab){
 
 // ---------- queue: review games automatically in the background ----------
 const R={queue:[],busy:null,prog:{},listeners:[],
-  auto(id){const g=X.CCX.games().find(x=>x.id===id);if(!g||g.review||g.moves.length<4)return;if(this.busy===id||this.queue.includes(id))return;this.queue.push(id);this.run();},
+  auto(id){const g=X.CCX.games().find(x=>x.id===id);if(!g||(g.review&&g.review.v>=2)||g.moves.length<4)return;if(this.busy===id||this.queue.includes(id))return;this.queue.push(id);this.run();},
   run(){if(this.busy||!this.queue.length)return;const id=this.queue.shift();const g=X.CCX.games().find(x=>x.id===id);if(!g){this.run();return;}
     this.busy=id;this.prog[id]=0;this.emit();
     compute(g,(a,b)=>{this.prog[id]=a/b;this.emit();}).then(rv=>{
@@ -154,7 +210,7 @@ function evalGraph(rv,cur){
   const W=600,H=110,N=rv.evals.length-1||1;
   const y=s=>H-wp(clampCp(s))*H;
   let path=`M0,${H} `;rv.evals.forEach((s,i)=>path+=`L${(i/N*W).toFixed(1)},${y(s).toFixed(1)} `);path+=`L${W},${H} Z`;
-  let dots='';rv.moves.forEach(m=>{if(m.cls==='blunder'||m.cls==='mistake'){const x=((m.i+1)/N*W).toFixed(1);dots+=`<circle cx="${x}" cy="${y(rv.evals[m.i+1]).toFixed(1)}" r="5" fill="${CLS[m.cls].c}" stroke="#111" data-ply="${m.i+1}" style="cursor:pointer"/>`;}});
+  let dots='';rv.moves.forEach(m=>{if(isErr(m)||m.cls==='brilliant'||m.cls==='great'){const x=((m.i+1)/N*W).toFixed(1);dots+=`<circle cx="${x}" cy="${y(rv.evals[m.i+1]).toFixed(1)}" r="5" fill="${CLS[m.cls].c}" stroke="#111" data-ply="${m.i+1}" style="cursor:pointer"/>`;}});
   const cx=cur!=null?(cur/N*W).toFixed(1):null;
   return `<svg viewBox="0 0 ${W} ${H}" class="egraph" preserveAspectRatio="none" style="width:100%;height:90px;display:block;border-radius:8px;background:#2a2e36;margin-top:8px">
     <path d="${path}" fill="#e8e6e1" opacity=".9"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="#888" stroke-dasharray="4 4"/>
@@ -162,22 +218,23 @@ function evalGraph(rv,cur){
     <div class="small muted" style="display:flex;justify-content:space-between"><span>White ahead ↑</span><span>tap a dot to jump to that moment</span><span>Black ahead ↓</span></div>`;}
 function sideReport(g,rv,side,showName){
   const mv=rv.moves.filter(m=>m.side===side),n=c=>mv.filter(m=>m.cls===c).length,hab=rv.hab[side]||[];
-  const name=nameOf(g,side),best=mv.filter(m=>m.cls==='best'||m.cls==='good').length;
+  const name=nameOf(g,side),best=mv.filter(m=>['brilliant','great','best','excellent','good','book'].includes(m.cls)).length;
   const issues=issuesFor(mv,hab).slice(0,4);
-  const key=mv.filter(m=>m.cls==='blunder'||m.cls==='mistake').sort((a,b)=>b.loss-a.loss).slice(0,5).sort((a,b)=>a.i-b.i);
+  const key=mv.filter(isErr).sort((a,b)=>b.loss-a.loss).slice(0,5).sort((a,b)=>a.i-b.i);
   let h=`<div class="card"><h2>${showName?esc(name):'Your game'} ${side===1?'♔':'♚'}</h2>
     <div class="stats"><div><b>${rv.acc[side]??'–'}%</b><span>accuracy</span></div><div style="color:${CLS.blunder.c}"><b>${n('blunder')}</b><span>blunders ??</span></div><div style="color:${CLS.mistake.c}"><b>${n('mistake')}</b><span>mistakes ?</span></div><div style="color:${CLS.inacc.c}"><b>${n('inacc')}</b><span>inaccuracies ?!</span></div></div>
-    <p class="small muted">${best} of ${mv.length} moves were best or good. A <b>blunder</b> throws away a big part of your winning chances (often a piece or the game), a <b>mistake</b> clearly worsens your position, an <b>inaccuracy</b> is a weaker move than the best one.</p>`;
+    <div class="ctable">${ORDER.map(k=>{const c=n(k);return `<div class="crow ${c?'':'zero'}">${badge(k,20)}<span>${CLS[k].name}</span><b style="color:${CLS[k].c}">${c}</b></div>`;}).join('')}</div>
+    <p class="small muted">${best} of ${mv.length} moves were good or better. A <b>blunder</b> throws away a big part of your winning chances (often a piece or the game), a <b>mistake</b> clearly worsens your position, an <b>inaccuracy</b> is a weaker move than the best one, and a <b>miss</b> is a chance you didn’t take. <b>Brilliant</b> = a strong sacrifice, <b>Great</b> = the only good move.</p>`;
   // what to learn
   h+=`<h3>📌 What to learn from this game</h3>`;
-  if(!issues.length)h+=`<p>${n('blunder')+n('mistake')===0?'No mistakes or blunders: excellent, careful play! Keep doing blunder checks every move.':'Only small inaccuracies. Well played.'}</p>`;
+  if(!issues.length)h+=`<p>${n('blunder')+n('mistake')+n('miss')===0?'No mistakes or blunders: excellent, careful play! Keep doing blunder checks every move.':'Only small inaccuracies. Well played.'}</p>`;
   else h+=`<ol class="lessons">${issues.map(it=>{const T=TIPS[it.k];return `<li><b>${T.t}</b> (${it.n}×). ${T.tip}${T.go?` <button class="mini" data-go="${T.go.join(':')}">Practise →</button>`:''}</li>`;}).join('')}</ol>`;
   // things you should not have done
   const bad=[...hab.map(x=>({k:x.k,text:x.text})),...mv.filter(m=>m.cls==='blunder').map(m=>({k:noOf(m.i),text:`Move ${moveLabel(m.i,m.san)}: blunder. ${m.mtext||''}`}))].sort((a,b)=>a.k-b.k);
   if(bad.length)h+=`<h3>🚫 Things you should not have done</h3><ul class="lessons">${bad.map(b=>`<li>${esc(b.text)}</li>`).join('')}</ul>`;
   // key moments
   if(key.length){h+=`<h3>🔑 Key moments</h3>`;
-    key.forEach((m,j)=>{h+=`<div class="moment"><div class="mhead" style="border-left:4px solid ${CLS[m.cls].c}"><b>${moveLabel(m.i,esc(m.san))}${CLS[m.cls].sym}</b> · ${CLS[m.cls].name} · <span class="muted">${m.phase}, eval ${fmtEval(m.before)} → ${fmtEval(m.after)}${m.ms!=null?`, played in ${Math.round(m.ms/1000)} s`:''}</span></div>
+    key.forEach((m,j)=>{h+=`<div class="moment"><div class="mhead" style="border-left:4px solid ${CLS[m.cls].c}">${badge(m.cls,18)} <b>${moveLabel(m.i,esc(m.san))}${CLS[m.cls].sym}</b> · ${CLS[m.cls].name} · <span class="muted">${m.phase}, eval ${fmtEval(m.before)} → ${fmtEval(m.after)}${m.ms!=null?`, played in ${Math.round(m.ms/1000)} s`:''}</span></div>
       <div class="mbody"><div class="cboard mini" id="km-${side}-${j}"></div><div class="mtext">${esc(m.mtext||'')}<div class="row"><button class="mini primary" data-retry="${m.i}">🧩 Find the better move</button><button class="mini" data-ply="${m.i}">Show in game</button></div></div></div></div>`;});}
   return {html:h+'</div>',key};}
 function section(g,el,setPly){
@@ -189,7 +246,7 @@ function section(g,el,setPly){
     else{el.innerHTML=`<div class="card"><h2>📊 Game review</h2><p>See your accuracy, blunders, key moments and what to learn from this game.</p><button class="primary big" id="rvGo">Analyse this game</button></div>`;
       $('rvGo').onclick=()=>{R.queue.unshift(id);R.run();section(g,el,setPly);};}
     return;}
-  const rv=g.review,sides=humanSides(g),two=g.type!=='engine';
+  const rv=g.review,sides=humanSides(g),two=sides.length>1;
   let html=`<div class="card"><h2>📊 Game review</h2>${evalGraph(rv,null)}
     ${two?`<div class="stats" style="margin-top:10px"><div><b>${rv.acc[1]}%</b><span>${esc(g.white)}</span></div><div><b>${rv.acc[-1]}%</b><span>${esc(g.black)}</span></div></div>`:''}
     <div class="row"><button id="rvPatterns">📈 My patterns across all games</button><button id="rvPuzzles">🧩 Practise my mistakes</button></div></div>`;
@@ -212,22 +269,23 @@ function openRetry(g,m,P){const st=puzzleFrom(g,m,P,`Move ${moveLabel(m.i,'')}`.
   X.show('learn');X.Learn.playCustom({id:'__review',icon:'🧩',title:'Game review',desc:'',lessons:[{id:'__r'+g.id+m.i,title:'Retry the position',steps:[st]}]},0);}
 // annotation for the replay board
 function note(g,ply){const rv=g.review;if(!rv||!ply)return null;const m=rv.moves[ply-1];if(!m)return null;
-  return {cls:m.cls,sym:CLS[m.cls].sym,color:CLS[m.cls].c,name:CLS[m.cls].name,best:m.best&&m.cls!=='best'?m.best:null,
+  const goodCls=['brilliant','great','best','book'].includes(m.cls);
+  return {cls:m.cls,sym:CLS[m.cls].sym,color:CLS[m.cls].c,name:CLS[m.cls].name,badge:badge(m.cls,22),best:m.best&&!goodCls&&m.best!==m.uci?m.best:null,
     text:`${moveLabel(m.i,m.san)}${CLS[m.cls].sym} · ${CLS[m.cls].name} · eval ${fmtEval(rv.evals[ply])}`+(m.mtext?` · ${m.mtext}`:(m.best&&m.best!==m.uci&&m.loss>0.02&&m.bestSan?` · Best was ${m.bestSan}`:''))};}
 
 // ---------- patterns across all games ----------
 function insights(el,who){
   const games=X.CCX.games().filter(g=>g.review);
-  const people={};games.forEach(g=>humanSides(g).forEach(s=>{const nm=nameOf(g,s),k=String(nm).toLowerCase();(people[k]=people[k]||{name:nm,list:[]}).list.push({g,side:s});}));
+  const people={};games.forEach(g=>humanSides(g).forEach(s=>{const k=personKey(g,s),nm=k==='me'?myName()+' (me)':nameOf(g,s);(people[k]=people[k]||{name:nm,list:[]}).list.push({g,side:s});}));
   const keys=Object.keys(people).sort((a,b)=>people[b].list.length-people[a].list.length);
-  const me=myName().toLowerCase();who=who||(people[me]?me:keys[0]);
+  who=who||(people.me?'me':keys[0]);
   if(!keys.length){el.innerHTML=`<div class="card"><button id="inBack">← All games</button><h2 style="margin-top:12px">📈 My patterns</h2><p>No reviewed games yet. Finish a game (against the engine or two players). It’s analysed automatically, and your patterns build up here.</p></div>`;$('inBack').onclick=()=>X.Hist.list();return;}
   const L=people[who].list.sort((a,b)=>new Date(a.g.date)-new Date(b.g.date));
   const mv=[],hab=[];L.forEach(({g,side})=>{g.review.moves.filter(m=>m.side===side).forEach(m=>mv.push(Object.assign({gid:g.id},m)));(g.review.hab[side]||[]).forEach(h=>hab.push(h));});
   const accs=L.map(({g,side})=>g.review.acc[side]).filter(x=>x!=null),avg=accs.length?Math.round(accs.reduce((a,b)=>a+b,0)/accs.length):0;
   const per=c=>(mv.filter(m=>m.cls===c).length/L.length).toFixed(1);
   const issues=issuesFor(mv,hab);
-  const phases=['opening','middlegame','endgame'].map(ph=>[ph,mv.filter(m=>m.phase===ph&&(m.cls==='mistake'||m.cls==='blunder')).length]);
+  const phases=['opening','middlegame','endgame'].map(ph=>[ph,mv.filter(m=>m.phase===ph&&isErr(m)).length]);
   const pieces={};mv.filter(m=>m.motif==='hang'&&m.piece).forEach(m=>{const n=A.pname(m.piece);pieces[n]=(pieces[n]||0)+1;});
   const habCount={};hab.forEach(h=>habCount[h.key]=(habCount[h.key]||0)+1);
   const HAB={earlyQueen:'Queen out too early',samePiece:'Same piece moved twice in the opening',flankPawns:'Too many early edge-pawn moves',kingWalk:'King moved, losing castling',slowDev:'Slow development (minor pieces at home on move 10)',lateCastle:'Castled late / king stuck in the centre'};
@@ -256,11 +314,11 @@ function mistakeCourse(){
   const games=X.CCX.games().filter(g=>g.review),lessons=[];
   for(const g of games){
     const P=[startPos()];{const p=startPos();for(const u of g.uci){const m=X.findUci(p,u);if(!m)break;make(p,m);P.push(clonePos(p));}}
-    const steps=[];humanSides(g).forEach(s=>g.review.moves.filter(m=>m.side===s&&(m.cls==='blunder'||m.cls==='mistake')&&m.best&&P[m.i]).forEach(m=>steps.push(puzzleFrom(g,m,P,`${esc(nameOf(g,s))}, move ${noOf(m.i)}.`))));
+    const steps=[];humanSides(g).forEach(s=>g.review.moves.filter(m=>m.side===s&&isErr(m)&&m.best&&P[m.i]).forEach(m=>steps.push(puzzleFrom(g,m,P,`${esc(nameOf(g,s))}, move ${noOf(m.i)}.`))));
     if(steps.length)lessons.push({id:'my-'+g.id,title:`${g.white} vs ${g.black}`,sub:`${new Date(g.date).toLocaleDateString()} · ${steps.length} position${steps.length>1?'s':''} to fix`,steps});}
   return {id:'mine',icon:'🧩',title:'From your games',desc:lessons.length?'Positions where you went wrong in your own games. Find the better move.':'Play and finish games: your mistakes become puzzles here.',lessons};}
 
-window.CCReview={R,section,note,insights,mistakeCourse,compute,fmtEval,CLS};
+window.CCReview={R,section,note,insights,mistakeCourse,compute,fmtEval,CLS,badge,ORDER};
 // review finished games that haven't been analysed yet (e.g. from before this feature)
-setTimeout(()=>{X.CCX.games().filter(g=>g.result!=='*'&&!g.review&&g.moves.length>=4).slice(0,5).forEach(g=>R.auto(g.id));},4000);
+setTimeout(()=>{X.CCX.games().filter(g=>g.result!=='*'&&(!g.review||g.review.v<2)&&g.moves.length>=4).slice(0,8).forEach(g=>R.auto(g.id));},4000);
 })();

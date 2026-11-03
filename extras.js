@@ -41,6 +41,7 @@ function drawBoard(el,pos,o){
     if(x){const sp=document.createElement('span');sp.className='pc '+(x>0?'w':'b');sp.textContent=A.GLYPH[Math.abs(x)]+'︎';d.appendChild(sp);}
     if(i===7){const c=document.createElement('span');c.className='coord f';c.textContent=FILES[file];d.appendChild(c);}
     if(j===0){const c=document.createElement('span');c.className='coord r';c.textContent=rank+1;d.appendChild(c);}
+    if(o.badge&&o.badge.sq===s)d.insertAdjacentHTML('beforeend',`<span class="sqbadge">${o.badge.html}</span>`);
     if(o.onClick)d.onclick=()=>o.onClick(s);
     el.appendChild(d);}
   if(o.arrows&&o.arrows.length){
@@ -112,9 +113,14 @@ const CCX=window.CCX={
   newId(){return 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);},
   games(){return LS.get('ccc_games',[]);},
   saveGame(g,fromReview){const all=CCX.games();const i=all.findIndex(x=>x.id===g.id);
-    if(i>=0&&!fromReview){const old=all[i];if(old.review&&!g.review&&(old.uci||[]).join(' ')===(g.uci||[]).join(' ')){g.review=old.review;g.reviewUci=old.reviewUci;}
+    if(i>=0&&!fromReview){const old=all[i],same=(old.uci||[]).join(' ')===(g.uci||[]).join(' ');
+      if(old.review&&!g.review&&same){g.review=old.review;g.reviewUci=old.reviewUci;}
+      if(old.rated&&!g.rated){if(same&&g.result===old.result)g.rated=old.rated;else{if(window.CCRating)CCRating.revertData(old);g.unrated=g.unrated||'take-back';}}
+      if(old.unrated&&!g.unrated)g.unrated=old.unrated;
       if(g.review&&g.reviewUci!==(g.uci||[]).length){delete g.review;delete g.reviewUci;}}
     if(i>=0)all[i]=g;else all.unshift(g);LS.set('ccc_games',all.slice(0,500));
+    if(!fromReview&&g.result!=='*'&&!g.rated&&!g.unrated&&window.CCRating)setTimeout(()=>CCRating.apply(g.id),50);
+    else if(!fromReview&&g.result!=='*'&&g.unrated&&!g.ratedChecked&&window.CCRating){g.ratedChecked=1;}
     if(!fromReview&&g.result!=='*'&&!g.review&&window.CCReview)setTimeout(()=>CCReview.R.auto(g.id),200);},
   deleteGame(id){LS.set('ccc_games',CCX.games().filter(g=>g.id!==id));}};
 function pgnOf(g){
@@ -150,6 +156,7 @@ const Two={g:null,pos:null,view:'setup',
     this.view='setup';const n=LS.get('ccc_2p_names',{w:'',b:''}),fl=LS.get('ccc_2p_flip',true);
     $('viewTwo').innerHTML=`<div class="card"><h2>Two players on this screen</h2>
       <p class="muted small">Pass the phone or laptop between moves. Every game is saved in History.</p>
+      <p class="small muted">Both players get an Elo rating (start ${window.CCRating?LS.get('ccc_rating',{start:1500}).start:1500}). Undoing a move makes the game unrated.</p>
       <label style="display:block;margin:12px 0 4px">♔ White player’s name</label><input class="txt" id="pW" maxlength="24" placeholder="e.g. Arindam" value="${esc(n.w)}">
       <label style="display:block;margin:12px 0 4px">♚ Black player’s name</label><input class="txt" id="pB" maxlength="24" placeholder="e.g. Rahul" value="${esc(n.b)}">
       <label style="display:block;margin:12px 0 4px">⏱ Timer (each player)</label>${CCClock.timerSelectHtml('pTimer',LS.get('ccc_2p_timer','none'))}
@@ -187,6 +194,9 @@ const Two={g:null,pos:null,view:'setup',
     if(st==='mate')this.g.result=this.pos.turn===1?'0-1':'1-0';else if(st==='stalemate'||st==='fifty'||st==='material')this.g.result='1/2-1/2';
     if(this.g.result!=='*'&&this.clock)this.clock.stop();
     this.saveClock();CCX.saveGame(this.g);A.beep(true);this.draw();},
+  rateLine(){const sv=CCX.games().find(x=>x.id===this.g.id)||this.g;
+    if(sv.rated)return Object.values(sv.rated).map(c=>`${esc(c.name)}: ${c.before} → ${c.after} (${c.d>=0?'+':''}${c.d})`).join(' · ');
+    if(sv.unrated)return 'Unrated game ('+esc(sv.unrated)+')';return '';},
   saveClock(){if(this.clock)this.g.clock=this.clock.times();},
   flag(side){const winner=-side,pos=this.pos;const name=side===1?this.g.white:this.g.black;
     if(!CCClock.hasMatingMaterial(pos,winner))this.end('1/2-1/2',`${name} ran out of time, but the opponent can’t checkmate: draw`);
@@ -194,7 +204,7 @@ const Two={g:null,pos:null,view:'setup',
   drawClocks(){const el=$('twoClocks');if(!el||!this.clock)return;
     el.innerHTML=CCClock.clockHtml(this.clock,[{side:1,label:'♔ '+esc(this.g.white)},{side:-1,label:'♚ '+esc(this.g.black)}]);
     const pb=$('tPause');if(pb)pb.textContent=this.clock.running?'⏸ Pause':'▶ Resume clock';},
-  undo(){if(!this.stack.length)return;const x=this.stack.pop();unmake(this.pos,x.m,x.u);this.g.moves.pop();this.g.uci.pop();this.g.result='*';delete this.g.why;
+  undo(){if(!this.stack.length)return;this.g.unrated='take-back';const x=this.stack.pop();unmake(this.pos,x.m,x.u);this.g.moves.pop();this.g.uci.pop();this.g.result='*';delete this.g.why;
     if(this.clock){this.clock.flagged=false;if(this.clock.running)this.clock.start(this.pos.turn);else this.clock.side=this.pos.turn;}
     this.saveClock();CCX.saveGame(this.g);this.click.clear();this.draw();},
   end(res,why){this.g.result=res;this.g.why=why;if(this.clock)this.clock.stop();this.saveClock();CCX.saveGame(this.g);this.draw();},
@@ -209,7 +219,7 @@ const Two={g:null,pos:null,view:'setup',
     let mv='';g.moves.forEach((m,i)=>{if(i%2===0)mv+=`<b>${i/2+1}.</b> `;mv+=esc(m)+' ';});
     $('viewTwo').innerHTML=`<div class="card">
       <div class="players"><span class="${turnW&&!over?'on':''}">♔ ${esc(g.white)}</span><span class="muted small">vs</span><span class="${!turnW&&!over?'on':''}">♚ ${esc(g.black)}</span></div>
-      <div id="twoCard" class="mcard ${cls}"><div class="mcLabel">${label}</div><div class="mcMain">${main}</div><div class="mcSub">${last&&!over?'Last move: '+esc(g.moves[g.moves.length-1]):''}</div></div>
+      <div id="twoCard" class="mcard ${cls}"><div class="mcLabel">${label}</div><div class="mcMain">${main}</div><div class="mcSub">${last&&!over?'Last move: '+esc(g.moves[g.moves.length-1]):''}${over?this.rateLine():''}</div></div>
       ${this.clock?`<div class="clocks" id="twoClocks"></div>`:''}
       <div id="twoBoard"></div>
       <div class="row" style="justify-content:center">
@@ -237,20 +247,21 @@ const Hist={sel:null, // null = normal view; Set of ids = select mode
     if(sel)for(const id of [...sel])if(!all.some(g=>g.id===id))sel.delete(id);
     const n=sel?sel.size:0,allOn=sel&&all.length&&n===all.length;
     $('viewHist').innerHTML=`<div class="card"><h2>Game history</h2>
+      ${all.length?'':`<div class="row" style="margin:0 0 10px"><button id="hImp0" class="primary">🔗 Import Lichess / chess.com games</button><button id="hRate0">🏆 My rating</button></div>`}
       ${all.length?`<p class="muted small">${all.length} saved game${all.length>1?'s':''} on this device. ${sel?'Tap games to select them.':'Tap a game to replay it.'}</p>`:'<p class="muted">No games yet. Games against the engine and two-player games are saved here automatically.</p>'}
       ${all.length?(sel?`<div class="row" style="margin:0 0 10px;justify-content:space-between">
           <label style="font-size:15px;color:var(--text)"><input type="checkbox" id="hSelAll" ${allOn?'checked':''} style="width:20px;height:20px"> Select all</label>
           <span><button id="hDelSel" class="${n?'primary':''}" ${n?'':'disabled'}>🗑 Delete selected (${n})</button> <button id="hSelDone">Cancel</button></span></div>`
-        :`<div class="row" style="margin:0 0 10px"><button id="hPat" class="primary">📈 My patterns</button><button id="hSelect">☑ Select / delete</button><button id="hAll">📋 Copy all (PGN)</button></div>`):''}
+        :`<div class="row" style="margin:0 0 10px"><button id="hImp">🔗 Import Lichess / chess.com</button><button id="hRate">🏆 My rating</button><button id="hPat" class="primary">📈 My patterns</button><button id="hSelect">☑ Select / delete</button><button id="hAll">📋 Copy all (PGN)</button></div>`):''}
       ${all.map(g=>`<div class="list-item${sel&&sel.has(g.id)?' picked':''}" data-g="${g.id}">
         ${sel?`<input type="checkbox" ${sel.has(g.id)?'checked':''} style="width:20px;height:20px;flex:none;pointer-events:none">`:''}
         <div style="flex:1"><b>${esc(g.white)}</b> vs <b>${esc(g.black)}</b>
-        <div class="small muted">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':'two players'} · ${g.moves.length} moves${g.tc?' · ⏱ '+esc(g.tc):''}</div></div>
-        <span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span>${g.review?`<span class="pill">📊 ${g.type==='engine'?(g.review.acc[g.human||1]??'–')+'%':g.review.acc[1]+'% · '+g.review.acc[-1]+'%'}</span>`:(window.CCReview&&(CCReview.R.busy===g.id||CCReview.R.queue.includes(g.id))?'<span class="pill">analysing…</span>':'')}</span></div>`).join('')}</div>`;
+        <div class="small muted">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':g.type==='online'?esc(g.source):'two players'} · ${g.moves.length} moves${g.tc?' · ⏱ '+esc(g.tc):''}</div></div>
+        <span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span>${g.rated&&g.rated[g.human||1]&&g.type==='engine'?`<span class="pill" style="color:${g.rated[g.human||1].d>=0?'#5fbf7a':'#e06c5f'}">${g.rated[g.human||1].d>=0?'+':''}${g.rated[g.human||1].d} → ${g.rated[g.human||1].after}</span>`:''}${g.review?`<span class="pill">📊 ${g.type==='engine'?(g.review.acc[g.human||1]??'–')+'%':g.review.acc[1]+'% · '+g.review.acc[-1]+'%'}</span>`:(window.CCReview&&(CCReview.R.busy===g.id||CCReview.R.queue.includes(g.id))?'<span class="pill">analysing…</span>':'')}</span></div>`).join('')}</div>`;
     document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{
       if(!this.sel)return this.open(el.dataset.g);
       const id=el.dataset.g;if(this.sel.has(id))this.sel.delete(id);else this.sel.add(id);this.list();});
-    if(!all.length)return;
+    if(!all.length){$('hImp0').onclick=()=>window.CCImport&&CCImport.view($('viewHist'));$('hRate0').onclick=()=>window.CCRating&&CCRating.view($('viewHist'));return;}
     if(sel){
       $('hSelAll').onchange=e=>{this.sel=new Set(e.target.checked?all.map(g=>g.id):[]);this.list();};
       $('hSelDone').onclick=()=>{this.sel=null;this.list();};
@@ -260,6 +271,8 @@ const Hist={sel:null, // null = normal view; Set of ids = select mode
     }else{
       $('hSelect').onclick=()=>{this.sel=new Set();this.list();};
       $('hPat').onclick=()=>window.CCReview&&CCReview.insights($('viewHist'));
+      $('hRate').onclick=()=>window.CCRating&&CCRating.view($('viewHist'));
+      $('hImp').onclick=()=>window.CCImport&&CCImport.view($('viewHist'));
       $('hAll').onclick=e=>copyText(all.map(pgnOf).join('\n'),e.target);}},
   open(id,startPly){
     const g0=CCX.games().find(x=>x.id===id);if(!g0)return this.list();let g=g0;
@@ -271,18 +284,19 @@ const Hist={sel:null, // null = normal view; Set of ids = select mode
     const draw=()=>{
       const rv=g.review;
       let mv='';g.moves.slice(0,ms.length).forEach((m,k)=>{if(k%2===0)mv+=`<b>${k/2+1}.</b> `;const r=rv&&rv.moves[k],c=r&&RV?RV.CLS[r.cls]:null;
-        mv+=`<span data-k="${k+1}" class="${k+1===i?'cur':''}" style="${c&&c.c&&r.cls!=='best'?'color:'+c.c+';font-weight:700':''}">${esc(m)}${c?c.sym:''}</span> `;});
+        const show=r&&['brilliant','great','inacc','mistake','miss','blunder'].includes(r.cls);
+        mv+=`<span data-k="${k+1}" class="${k+1===i?'cur':''}" style="${show?'color:'+c.c+';font-weight:700':''}">${show?RV.badge(r.cls,14)+' ':''}${esc(m)}${c?c.sym:''}</span> `;});
       const nt=RV&&rv?RV.note(g,i):null;
       $('hTop').innerHTML=`<button id="hBack">← All games</button>
         <div class="players" style="margin-top:12px"><span>♔ ${esc(g.white)}</span><span class="pill ${g.result!=='*'?'done':''}">${esc(resultText(g))}</span><span>♚ ${esc(g.black)}</span></div>
-        <div class="small muted" style="text-align:center;margin-top:4px">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':'two players'}${g.tc?' · ⏱ '+esc(g.tc):''}${g.why?' · '+esc(g.why):''}</div>
+        <div class="small muted" style="text-align:center;margin-top:4px">${new Date(g.date).toLocaleString()} · ${g.type==='engine'?'vs engine':g.type==='online'?(g.url?`<a href="${esc(g.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(g.source)} ↗</a>`:esc(g.source)):'two players'}${g.whiteElo||g.blackElo?` · ${g.whiteElo||'?'} vs ${g.blackElo||'?'}`:''}${g.tc?' · ⏱ '+esc(g.tc):''}${g.why?' · '+esc(g.why):''}</div>
         <div id="histBoard"></div>
-        ${nt?`<div class="lesson-text" style="border-left:4px solid ${nt.color||'#3a3f49'};font-size:14.5px">${esc(nt.text)}${nt.best?' <span class="muted">(green arrow = best move)</span>':''}</div>`:rv&&i===0?'<div class="lesson-text small">Step through the game with ▶. Mistakes are coloured in the move list; the review is below.</div>':''}
+        ${nt?`<div class="lesson-text" style="border-left:4px solid ${nt.color||'#3a3f49'};font-size:14.5px">${nt.badge} ${esc(nt.text)}${nt.best?' <span class="muted">(green arrow = best move)</span>':''}</div>`:rv&&i===0?'<div class="lesson-text small">Step through the game with ▶. Mistakes are coloured in the move list; the review is below.</div>':''}
         <div class="row" style="justify-content:center"><button id="h0">⏮</button><button id="hP">◀</button><span class="muted">${i} / ${ps.length-1}</span><button id="hN">▶</button><button id="hE">⏭</button><button id="hF">⇅ Flip</button></div>
         <div class="mlist">${mv||'No moves.'}</div>
         <div class="row"><button id="hCopy">📋 Copy PGN</button>${g.type==='2p'&&g.result==='*'?'<button id="hResume" class="primary">▶ Continue this game</button>':''}<button id="hDel">🗑 Delete</button></div>`;
       const arrows=[];if(nt&&nt.best){const bm=findUci(ps[i-1],nt.best);if(bm)arrows.push({f:bm.f,t:bm.t,c:'#2e9e52'});}
-      drawBoard($('histBoard'),ps[i],{flip,last:i?ms[i-1]:null,arrows,marks:nt&&nt.color&&ms[i-1]&&nt.cls!=='best'?{[ms[i-1].t]:nt.color}:null});
+      drawBoard($('histBoard'),ps[i],{flip,last:i?ms[i-1]:null,arrows,badge:nt&&ms[i-1]?{sq:ms[i-1].t,html:nt.badge}:null});
       $('hBack').onclick=()=>{this.openId=null;this.list();};
       $('h0').onclick=()=>{i=0;draw();};$('hP').onclick=()=>{if(i>0)i--;draw();};$('hN').onclick=()=>{if(i<ps.length-1)i++;draw();};$('hE').onclick=()=>{i=ps.length-1;draw();};
       $('hF').onclick=()=>{flip=!flip;draw();};
@@ -425,5 +439,6 @@ const Learn={
 function sqi(n){return (n.charCodeAt(0)-97)+(+n[1]-1)*8;}
 function marksOf(o){if(!o)return null;const r={};for(const k in o)r[sqi(k)]=o[k];return r;}
 function openLesson(cid,lid){show('learn');const c=Learn.all().find(x=>x.id===cid);if(!c)return;Learn.c=c;const li=Math.max(0,c.lessons.findIndex(l=>l.id===lid||l.id.startsWith(lid)));if(c.lessons.length)Learn.lesson(li);else Learn.course(cid);}
+document.addEventListener('ccrating',e=>{if(curView==='two'&&Two.g&&Two.g.id===e.detail.gid&&Two.view==='game')Two.draw();});
 window.CCLearn={fromFen,Learn,Two,Hist,show,openLesson,drawBoard,esc,LS,findUci,uciOf,fenOf,CCX};
 })();
